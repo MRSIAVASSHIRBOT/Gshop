@@ -1,1 +1,520 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0a" />
+<meta name="description" content="G_SHOP | فروشگاه پوشاک اسپرت — طراحی مدرن، کیفیت بالا، قیمت منطقی" />
+<meta name="keywords" content="پوشاک اسپرت, تیشرت, فروشگاه آنلاین, G_SHOP, لباس مردانه" />
+<meta name="author" content="MR_SIAVASH_IR_BOT" />
+<meta property="og:title" content="G_SHOP — پوشاک اسپرت" />
+<meta property="og:description" content="فروشگاه آنلاین پوشاک اسپرت. طراحی مدرن، کیفیت بالا." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://gshop11.ir" />
+<meta property="og:image" content="https://picsum.photos/seed/gshop-og/1200/630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="canonical" href="https://gshop11.ir" />
+<title>G_SHOP — پوشاک اسپرت</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ClothingStore",
+  "name": "G_SHOP",
+  "description": "فروشگاه آنلاین پوشاک اسپرت",
+  "url": "https://gshop11.ir",
+  "telephone": "+989120507960",
+  "sameAs": ["https://instagram.com/g__shop11", "https://t.me/Alisdt98"]
+}
+</script>
+</head>
+<body>
 
+<!-- Scroll Progress -->
+<div class="scroll-progress"><div class="scroll-progress__bar" id="scrollBar"></div></div>
+
+<!-- Offline banner -->
+<div class="offline-banner" id="offlineBanner">📡 اتصال اینترنت قطع است</div>
+
+<!-- Ticker -->
+<div class="ticker" id="ticker">
+  <div class="ticker__track" id="tickerTrack">
+    <span>ارسال رایگان بالای ۱ میلیون تومان</span>
+    <span>کالکشن جدید ۲۰۲۶ منتشر شد</span>
+    <span>پرداخت در محل موجود است</span>
+    <span>G_SHOP — کیفیت بالاتر از قیمت</span>
+    <span>ارسال رایگان بالای ۱ میلیون تومان</span>
+    <span>کالکشن جدید ۲۰۲۶ منتشر شد</span>
+    <span>پرداخت در محل موجود است</span>
+    <span>G_SHOP — کیفیت بالاتر از قیمت</span>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="wrap nav__inner">
+    <a href="#" class="nav__brand" data-nav="home"><span id="brandName">G_SHOP</span><span class="dot">.</span></a>
+    <div class="nav__links">
+      <a data-nav="products">فروشگاه</a>
+      <a data-nav="lookbook">لوک‌بوک</a>
+      <a data-nav="story">درباره ما</a>
+      <a data-nav="faq">سوالات</a>
+      <a data-nav="track">پیگیری سفارش</a>
+      <a data-nav="contact">تماس</a>
+    </div>
+    <div class="nav__actions">
+      <button class="icon-btn" id="themeToggle" title="تم تاریک/روشن" aria-label="تغییر تم">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" id="themeIcon">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="openWish" title="علاقه‌مندی‌ها" aria-label="علاقه‌مندی‌ها">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+        </svg>
+        <span class="badge red" id="wishBadge" style="display:none">0</span>
+      </button>
+      <button class="icon-btn" id="openAdmin" title="پنل مدیریت" aria-label="پنل مدیریت">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="openCart" title="سبد خرید" aria-label="سبد خرید">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        <span class="badge" id="cartBadge" style="display:none">0</span>
+      </button>
+      <button class="icon-btn hamburger" id="openMobile" title="منو" aria-label="باز کردن منو">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- MOBILE MENU -->
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mobile-menu__head">
+    <span class="mobile-menu__brand"><span id="brandNameMobile">G_SHOP</span><span class="dot">.</span></span>
+    <button class="close-x" id="closeMobile" aria-label="بستن">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <nav>
+    <a data-nav="products">فروشگاه <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a data-nav="lookbook">لوک‌بوک <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a data-nav="story">درباره ما <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a data-nav="faq">سوالات متداول <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a data-nav="track">پیگیری سفارش <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a data-nav="contact">تماس با ما <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+  </nav>
+  <div class="mobile-menu__foot">
+    <a href="https://instagram.com/g__shop11" target="_blank" rel="noopener" id="mmInstagram">📷 اینستاگرام</a>
+    <a href="https://t.me/Alisdt98" target="_blank" rel="noopener" id="mmTelegram">💬 تلگرام</a>
+    <a href="tel:09120507960" id="mmPhone">📞 تماس</a>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero__glow"></div>
+  <div class="hero__glow-2"></div>
+  <div class="wrap hero__grid">
+    <div>
+      <span class="tag" id="heroTag">● کالکشن ۲۰۲۶</span>
+      <h1 class="hero__title" style="margin-top:22px">
+        <span class="row"><span id="heroLine1">G_</span></span>
+        <span class="row"><em id="heroLine2">SHOP</em></span>
+      </h1>
+      <p class="hero__lead" id="heroLead">
+        پوشاک <strong>اسپرت</strong> با <strong>طراحی مدرن</strong> و <strong>کیفیت بالا</strong>.
+        ساخته شده برای کسانی که استایلشان حرف می‌زند.
+      </p>
+      <div class="hero__ctas">
+        <button class="btn btn--primary" data-nav="products">
+          دیدن کالکشن
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <a class="btn btn--ghost" href="https://instagram.com/g__shop11" target="_blank" rel="noopener">اینستاگرام</a>
+      </div>
+
+      <div class="countdown" id="countdown">
+        <div class="countdown__label" id="countdownLabel">🔥 <b>پیشنهاد ویژه</b> تا پایان:</div>
+        <div class="countdown__box" id="countdownBox">
+          <div class="countdown__item"><div class="n mono" id="cdD">۰۰</div><div class="l">روز</div></div>
+          <span class="countdown__sep">:</span>
+          <div class="countdown__item"><div class="n mono" id="cdH">۰۰</div><div class="l">ساعت</div></div>
+          <span class="countdown__sep">:</span>
+          <div class="countdown__item"><div class="n mono" id="cdM">۰۰</div><div class="l">دقیقه</div></div>
+          <span class="countdown__sep">:</span>
+          <div class="countdown__item"><div class="n mono" id="cdS">۰۰</div><div class="l">ثانیه</div></div>
+        </div>
+      </div>
+
+      <div class="hero__stats">
+        <div class="hero__stat"><div class="n mono">۱۰۰٪</div><div class="l">کیفیت تضمینی</div></div>
+        <div class="hero__stat"><div class="n mono">+۵۰۰</div><div class="l">مشتری راضی</div></div>
+        <div class="hero__stat"><div class="n mono">۲-۴</div><div class="l">روز تحویل</div></div>
+      </div>
+    </div>
+    <div class="hero__visual">
+      <div class="hero__card">
+        <img src="https://picsum.photos/seed/badboy/900/1200" alt="تیشرت BAD BOY" id="heroImg1">
+        <div class="hero__card__meta"><h3 id="heroCardTitle">تیشرت BAD BOY</h3><span class="price" id="heroCardPrice">۹۶۰,۰۰۰</span></div>
+      </div>
+      <div class="hero__card"><img src="https://picsum.photos/seed/tshirt23/900/1200" alt="" id="heroImg2"></div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE GALLERY -->
+<section class="marquee">
+  <div class="wrap marquee__head reveal">
+    <h2 id="marqueeTitle">استایل <em>اسپرت</em> روزمره</h2>
+    <p id="marqueeSub">مجموعه‌ای از استایل‌های پیشنهادی — برای روزهای معمولی که می‌خوان خاص باشن.</p>
+  </div>
+  <div class="marquee__track" id="marqueeTrack">
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq1/600/800" alt=""><span>STREET LOOK</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq2/600/800" alt=""><span>CASUAL FIT</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq3/600/800" alt=""><span>BLACK SERIES</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq4/600/800" alt=""><span>OVERSIZE</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq5/600/800" alt=""><span>MINIMAL</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq6/600/800" alt=""><span>DAILY WEAR</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq1/600/800" alt=""><span>STREET LOOK</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq2/600/800" alt=""><span>CASUAL FIT</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq3/600/800" alt=""><span>BLACK SERIES</span></div>
+    <div class="marquee__item"><img src="https://picsum.photos/seed/mq4/600/800" alt=""><span>OVERSIZE</span></div>
+  </div>
+</section>
+
+<!-- LOOKBOOK -->
+<section class="sec" id="lookbook">
+  <div class="wrap">
+    <div class="sec__head reveal">
+      <h2 id="lookbookTitle">لوک‌بوک <em>۲۰۲۶</em></h2>
+      <p id="lookbookSub">مجموعه‌ای که برای دیده شدن طراحی شده — استایل‌های پیشنهادی برای فصل جدید.</p>
+    </div>
+    <div class="editorial">
+      <a class="ed ed--big reveal" data-nav="products">
+        <img src="https://picsum.photos/seed/editorial1/1200/1500" alt="">
+        <div class="ed__meta"><span class="tag">مجموعه اصلی</span><h3>STREET ESSENTIALS</h3><p>پایه‌های استایل اسپرت — مینیمال، راحت، ماندگار</p></div>
+      </a>
+      <a class="ed reveal" data-nav="products">
+        <img src="https://picsum.photos/seed/editorial2/900/1200" alt="">
+        <div class="ed__meta"><span class="tag">جدید</span><h3>BLACK SERIES</h3></div>
+      </a>
+      <a class="ed reveal" data-nav="products">
+        <img src="https://picsum.photos/seed/editorial3/900/1200" alt="">
+        <div class="ed__meta"><span class="tag">محدود</span><h3>LIMITED DROP</h3></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCTS -->
+<section class="sec" id="products" style="padding-top:20px">
+  <div class="wrap">
+    <div class="sec__head reveal">
+      <h2>فروشگاه</h2>
+      <p>همه محصولات — موجودی لحظه‌ای، اضافه کردن سریع به سبد.</p>
+    </div>
+    <div class="toolbar reveal">
+      <div class="toolbar__search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="جستجوی محصول..." aria-label="جستجو">
+      </div>
+      <select id="categorySelect" class="category-select" aria-label="دسته‌بندی">
+        <option value="">همه دسته‌ها</option>
+      </select>
+      <button class="chip active" data-filter="all">همه</button>
+      <button class="chip" data-filter="instock">موجود</button>
+      <button class="chip" data-filter="new">جدید</button>
+      <button class="chip" data-filter="sale">تخفیف‌دار</button>
+      <select id="sortSelect" aria-label="مرتب‌سازی">
+        <option value="default">مرتب‌سازی</option>
+        <option value="price-asc">ارزان‌ترین</option>
+        <option value="price-desc">گران‌ترین</option>
+        <option value="rating">محبوب‌ترین</option>
+        <option value="stock">پرموجودترین</option>
+        <option value="newest">جدیدترین</option>
+      </select>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</section>
+
+<!-- RECENTLY VIEWED -->
+<section class="sec" id="recentSec" style="padding-top:0;display:none">
+  <div class="wrap">
+    <div class="sec__head reveal"><h2 style="font-size:32px">اخیراً دیده‌شده</h2></div>
+    <div class="grid" id="recentGrid"></div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="testimonials" id="testimonials">
+  <div class="wrap">
+    <div class="testimonials__head reveal">
+      <h2 id="testimonialsTitle">مشتری‌ها <em>چی می‌گن؟</em></h2>
+      <p id="testimonialsSub">نظر واقعی کسانی که از G_SHOP خرید کردن — بدون فیلتر.</p>
+    </div>
+    <div class="testimonials__grid" id="testimonialsGrid"></div>
+  </div>
+</section>
+
+<!-- STORY -->
+<section class="story" id="story">
+  <div class="wrap">
+    <div class="story__grid">
+      <div class="reveal">
+        <span class="tag" style="color:#666;border-color:#ccc">داستان ما</span>
+        <h2 style="margin-top:20px" id="storyTitle">لباسی که<br>حرف می‌زند.</h2>
+        <p id="storyText">G_SHOP یه فروشگاه آنلاین پوشاک اسپرت که از یه ایده ساده شروع شد — پوشاکی که هم کیفیت داشته باشه، هم قیمت منطقی. ما هر تیشرت رو با وسواس انتخاب می‌کنیم و به دست شما می‌رسونیم.</p>
+        <div class="story__bullets">
+          <div class="story__bullet"><div class="n">۱</div><div><b>پارچه درجه‌یک</b> — پنبه با دوخت مقاوم و رنگ‌ثابت</div></div>
+          <div class="story__bullet"><div class="n">۲</div><div><b>ارسال سریع</b> — بسته‌بندی شکیل و تحویل ۲ تا ۴ روز کاری</div></div>
+          <div class="story__bullet"><div class="n">۳</div><div><b>پشتیبانی واقعی</b> — قبل و بعد از خرید همراه شماست</div></div>
+        </div>
+        <button class="btn btn--dark" data-nav="products">
+          کالکشن را ببین
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div class="story__img reveal"><img src="https://picsum.photos/seed/story/1000/1300" alt="داستان G_SHOP" id="storyImg"></div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq" id="faq">
+  <div class="wrap">
+    <div class="faq__head reveal">
+      <h2>سوالات <em>متداول</em></h2>
+      <p>اگه جواب سوالت اینجا نبود، از پشتیبانی تلگرام بپرس.</p>
+    </div>
+    <div class="faq__list" id="faqList">
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>هزینه و زمان ارسال چقدره؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>ارسال برای سفارش‌های بالای ۱ میلیون تومان رایگانه. برای سایر سفارش‌ها هزینه ارسال بر اساس استان محاسبه می‌شه. زمان تحویل ۲ تا ۴ روز کاری در سراسر کشوره.</p></div>
+      </div>
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>سایزبندی چطوره؟ اگه سایزم نخورد چی؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>راهنمای سایز برای هر محصول موجوده. اگه بین دو سایز هستی، پیشنهاد می‌کنیم بزرگ‌تر رو انتخاب کنی. اگه با این حال سایز نخورد، تا ۳ روز بعد از دریافت می‌تونی تعویض کنی (به شرط استفاده نشدن و باقی بودن تگ).</p></div>
+      </div>
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>چطور سفارشم رو پیگیری کنم؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>بعد از ثبت سفارش، یه شماره سفارش بهت داده می‌شه (مثلاً GS-12345678). از بخش «پیگیری سفارش» با وارد کردن شماره سفارش و شماره موبایلت، وضعیت لحظه‌ای رو ببین.</p></div>
+      </div>
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>روش‌های پرداخت چیه؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>در حال حاضر پرداخت به صورت کارت‌به‌کارت یا پرداخت در محل (برای شهرهای منتخب) انجام می‌شه. بعد از ثبت سفارش، اطلاعات پرداخت از طریق تلگرام یا تماس باهات در میون گذاشته می‌شه.</p></div>
+      </div>
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>امکان مرجوعی کالا هست؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>بله، تا ۳ روز بعد از دریافت، به شرط باز نشدن و استفاده نشدن لباس، امکان مرجوعی هست. برای هماهنگی از طریق تلگرام یا تلفن با پشتیبانی تماس بگیر.</p></div>
+      </div>
+      <div class="faq__item reveal">
+        <button class="faq__q">
+          <span>کد تخفیف چطور کار می‌کنه؟</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </button>
+        <div class="faq__a"><p>کد تخفیف رو تو سبد خرید تو باکس «کد تخفیف» وارد کن و دکمه اعمال رو بزن. اگه کد معتبر باشه، تخفیف به جمع نهایی اضافه می‌شه. توجه: هر کد ممکنه حداقل خرید یا محدودیت تعداد استفاده داشته باشه.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTAGRAM -->
+<section class="instagram" id="instagram">
+  <div class="wrap">
+    <div class="instagram__head reveal">
+      <h2 id="instagramTitle">ما رو در <em>اینستاگرام</em> دنبال کن</h2>
+      <a href="https://instagram.com/g__shop11" target="_blank" rel="noopener" id="instagramLink">
+        📷 @g__shop11
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17L17 7M7 7h10v10"/></svg>
+      </a>
+    </div>
+    <div class="instagram__grid">
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig1/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig2/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig3/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig4/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig5/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img src="https://picsum.photos/seed/ig6/400/400" alt=""></a>
+    </div>
+  </div>
+</section>
+
+<!-- TRACK ORDER -->
+<section class="sec" id="track">
+  <div class="wrap">
+    <div class="sec__head reveal" style="justify-content:center;text-align:center;flex-direction:column;align-items:center">
+      <h2>پیگیری سفارش</h2>
+      <p style="margin-top:12px">شماره سفارش و موبایل خود را وارد کنید تا وضعیت را ببینید.</p>
+    </div>
+    <div class="track-form reveal">
+      <input type="text" id="trackNo" placeholder="شماره سفارش (مثلاً GS-12345678)" class="mono" inputmode="text" autocomplete="off">
+      <input type="tel" id="trackPhone" placeholder="شماره موبایل" inputmode="tel" autocomplete="tel">
+      <button class="checkout-btn" id="trackBtn">بررسی وضعیت</button>
+      <div id="trackResult" style="margin-top:20px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer id="contact">
+  <div class="wrap">
+    <div class="foot__top">
+      <div>
+        <div class="foot__brand"><span id="brandNameFooter">G_SHOP</span><span class="dot">.</span></div>
+        <p class="foot__desc" id="footerDesc">فروشگاه آنلاین پوشاک اسپرت — طراحی مدرن، کیفیت بالا، قیمت منطقی.</p>
+        <div class="foot__contact">
+          <a href="tel:09120507960" id="footerPhone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="mono">0912 050 7960</span></a>
+          <a href="https://t.me/Alisdt98" target="_blank" rel="noopener" id="footerTelegram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 4.5L2.5 12l6 2 2 6 5-6 6-9.5z"/></svg><span>@Alisdt98</span></a>
+          <a href="https://instagram.com/g__shop11" target="_blank" rel="noopener" id="footerInstagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg><span>@g__shop11</span></a>
+        </div>
+        <div class="foot__sub">
+          <input type="email" id="newsletterEmail" placeholder="ایمیل برای خبرنامه" autocomplete="email">
+          <button id="newsletterBtn">عضویت</button>
+        </div>
+      </div>
+      <div class="foot">
+        <h4>فروشگاه</h4>
+        <ul>
+          <li><a data-nav="products">همه محصولات</a></li>
+          <li><a data-nav="lookbook">لوک‌بوک</a></li>
+          <li><a data-nav="track">پیگیری سفارش</a></li>
+        </ul>
+      </div>
+      <div class="foot">
+        <h4>دسترسی سریع</h4>
+        <ul>
+          <li><a data-nav="story">درباره ما</a></li>
+          <li><a data-nav="faq">سوالات متداول</a></li>
+          <li><a data-nav="contact">تماس با ما</a></li>
+        </ul>
+      </div>
+      <div class="foot">
+        <h4>ارتباط</h4>
+        <ul>
+          <li><a href="https://instagram.com/g__shop11" target="_blank" rel="noopener">Instagram ↗</a></li>
+          <li><a href="https://t.me/Alisdt98" target="_blank" rel="noopener">Telegram ↗</a></li>
+          <li><a href="tel:09120507960">تماس تلفنی ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot__bottom">
+      <span>© ۲۰۲۶ G_SHOP — تمامی حقوق محفوظ است</span>
+      <span class="foot__creator">طراحی و توسعه توسط <a href="https://t.me/MR_SIAVASH_IR_BOT" target="_blank" rel="noopener">@MR_SIAVASH_IR_BOT</a></span>
+    </div>
+  </div>
+</footer>
+
+<!-- BACK TO TOP -->
+<button class="fab back-top" id="backTop" aria-label="بازگشت به بالا">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+</button>
+
+<!-- LIVE CHAT -->
+<a class="fab live-chat" href="https://t.me/Alisdt98" target="_blank" rel="noopener" aria-label="پشتیبانی تلگرام" id="liveChat">
+  <span class="live-chat__pulse"></span>
+  <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
+  <span class="live-chat__label">پشتیبانی تلگرام</span>
+</a>
+
+<!-- SCRIM -->
+<div class="scrim" id="scrim"></div>
+
+<!-- CART DRAWER -->
+<aside class="drawer" id="drawer" aria-label="سبد خرید">
+  <div class="drawer__head">
+    <h3>سبد خرید</h3>
+    <button class="close-x" id="closeCart" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="drawer__body" id="cartBody"></div>
+  <div class="drawer__foot" id="cartFoot"></div>
+</aside>
+
+<!-- WISHLIST DRAWER -->
+<aside class="drawer drawer--left" id="wishDrawer" aria-label="علاقه‌مندی‌ها">
+  <div class="drawer__head">
+    <h3>علاقه‌مندی‌ها ❤</h3>
+    <button class="close-x" id="closeWish" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="drawer__body" id="wishBody"></div>
+</aside>
+
+<!-- ORDERS DRAWER (My Orders) -->
+<aside class="drawer drawer--left" id="ordersDrawer" aria-label="سفارش‌های من">
+  <div class="drawer__head">
+    <h3>سفارش‌های من 📋</h3>
+    <button class="close-x" id="closeOrders" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="drawer__body" id="ordersBody"></div>
+</aside>
+
+<!-- MODAL -->
+<div class="modal" id="modal"><div class="modal__box" id="modalBox"></div></div>
+
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">تایید</h3>
+    <p id="confirmMsg"></p>
+    <div class="btns"><button class="no" id="confirmNo">لغو</button><button class="yes" id="confirmYes">تایید</button></div>
+  </div>
+</div>
+
+<!-- COMPARE BAR -->
+<div class="compare-bar" id="compareBar">
+  <div class="compare-bar__items" id="compareItems"></div>
+  <div class="compare-bar__info"><b id="compareCount">۰</b> محصول انتخاب شده</div>
+  <button class="compare-bar__btn" id="compareBtn" disabled>مقایسه</button>
+  <button class="close-x" id="compareClear" aria-label="پاک کردن" style="width:28px;height:28px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+</div>
+
+<!-- ADMIN -->
+<div class="admin" id="adminPanel">
+  <div class="admin__bar">
+    <h2><span id="brandNameAdmin">G_SHOP</span><span class="dot">.</span> <span style="color:var(--dim);font-size:14px;font-weight:400">پنل مدیریت</span></h2>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn--ghost" style="padding:10px 20px;font-size:12px" id="adminLogout">خروج</button>
+      <button class="close-x" id="closeAdmin" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  </div>
+  <div class="admin__body" id="adminBody"></div>
+</div>
+
+<!-- TOASTS -->
+<div class="toasts" id="toasts"></div>
+
+<script src="app.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
