@@ -1,4 +1,5 @@
-window.applyContent = window.applyContent || function(){};
+const CONTENT_CACHE = 'gshop_content_cache';
+const SETTINGS_CACHE = 'gshop_settings_cache_v6';
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
 
 function openAdmin() {
@@ -74,7 +75,8 @@ async function renderAdmin() {
       body.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       body.querySelectorAll('.panel').forEach(x => x.classList.remove('on'));
       t.classList.add('active');
-      $('#panel-' + t.dataset.tab).classList.add('on');
+      const panel = document.getElementById('panel-' + t.dataset.tab);
+      if (panel) panel.classList.add('on');
       adminState.currentTab = t.dataset.tab;
       loadAdminTab();
     };
@@ -95,7 +97,10 @@ async function loadAdminTab() {
     else if (v === 'content') await loadContentPanel();
     else if (v === 'settings') await loadSettingsPanel();
     else if (v === 'audit') await loadAudit();
-  } catch (e) { if (e.message.includes('دسترسی') || e.status === 401) adminLogout(); }
+  } catch (e) {
+    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    else console.error(e);
+  }
 }
 
 async function loadDashboard() {
@@ -151,8 +156,8 @@ async function loadDashboard() {
       } catch (e) { toast(e.message, 'err'); }
     };
     $('#clearCache').onclick = () => {
-      localStorage.removeItem(SETTINGS_CACHE_KEY);
-      localStorage.removeItem('gshop_content_cache');
+      localStorage.removeItem(SETTINGS_CACHE);
+      localStorage.removeItem(CONTENT_CACHE);
       toast('کش پاک شد. صفحه رو رفرش کن ✓');
     };
   } catch (e) {
@@ -165,8 +170,10 @@ async function loadProductsAdmin() {
   const el = $('#panel-products');
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
-    const { products } = await api('/api/products');
+    const res = await api('/api/products');
+    const products = Array.isArray(res.products) ? res.products : [];
     state.products = products;
+
     el.innerHTML = `
       <div class="filter-bar">
         <input type="text" id="prodSearch" placeholder="🔍 جستجوی محصول...">
@@ -181,6 +188,7 @@ async function loadProductsAdmin() {
       </div>
       <div id="prodList"></div>
     `;
+
     const render = (search = '', status = '') => {
       let list = [...products];
       if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || String(p.id).includes(q)); }
@@ -189,6 +197,7 @@ async function loadProductsAdmin() {
       if (status === 'instock') list = list.filter(p => totalStock(p) > 0);
       if (status === 'outstock') list = list.filter(p => totalStock(p) === 0);
       const container = $('#prodList');
+      if (!container) return;
       if (!list.length) { container.innerHTML = '<p style="color:var(--dim)">محصولی یافت نشد.</p>'; return; }
       container.innerHTML = list.map(p => {
         const stock = totalStock(p);
@@ -212,16 +221,24 @@ async function loadProductsAdmin() {
                 ${p.category ? `<div>📂 دسته: ${esc(p.category)}</div>` : ''}
               </div>
               <div class="prod-admin__head actions" style="margin:0;justify-content:flex-start;gap:8px;flex-wrap:wrap">
-                <button data-edit="${p.id}">✏️ ویرایش</button>
-                <button data-toggle-active="${p.id}" data-active="${p.active}">${p.active ? '🚫 غیرفعال' : '✅ فعال'}</button>
-                <button data-gallery="${p.id}">🖼 گالری</button>
-                <button class="danger" data-del="${p.id}">🗑 حذف</button>
+                <button type="button" data-edit="${p.id}">✏️ ویرایش</button>
+                <button type="button" data-toggle-active="${p.id}" data-active="${p.active}">${p.active ? '🚫 غیرفعال' : '✅ فعال'}</button>
+                <button type="button" data-gallery="${p.id}">🖼 گالری</button>
+                <button type="button" class="danger" data-del="${p.id}">🗑 حذف</button>
               </div>
             </div>
           </div>
         `;
       }).join('');
-      container.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEditProduct(Number(b.dataset.edit)));
+
+      container.querySelectorAll('[data-edit]').forEach(b => {
+        b.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pid = Number(b.dataset.edit);
+          if (pid) openEditProduct(pid);
+        };
+      });
       container.querySelectorAll('[data-toggle-active]').forEach(b => {
         b.onclick = async () => {
           const active = b.dataset.active === '1' ? 0 : 1;
@@ -243,7 +260,9 @@ async function loadProductsAdmin() {
           } catch (e) { toast(e.message, 'err'); }
         };
       });
-      container.querySelectorAll('[data-gallery]').forEach(b => b.onclick = () => openGalleryManager(Number(b.dataset.gallery)));
+      container.querySelectorAll('[data-gallery]').forEach(b => {
+        b.onclick = (e) => { e.preventDefault(); openGalleryManager(Number(b.dataset.gallery)); };
+      });
     };
     render();
     const debouncedRender = debounce((v, s) => render(v, s), 250);
@@ -257,16 +276,17 @@ async function loadProductsAdmin() {
 }
 
 function openEditProduct(pid) {
-  const p = state.products.find(x => x.id === pid);
-  if (!p) return;
+  const p = state.products.find(x => Number(x.id) === Number(pid));
+  if (!p) { toast('محصول پیدا نشد. صفحه رو رفرش کن.', 'err'); return; }
   const modal = $('#modal');
   const box = $('#modalBox');
+  if (!modal || !box) { toast('خطا در باز کردن پنجره', 'err'); return; }
   box.classList.add('modal__box--wide');
   box.innerHTML = `
     <div style="padding:32px" id="editProdContainer">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <h2 style="margin:0">ویرایش محصول #${p.id}</h2>
-        <button class="close-x" id="epClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button type="button" class="close-x" id="epClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="np-grid">
         <div class="np-field"><label>نام محصول *</label><input type="text" id="epName" value="${esc(p.name)}"></div>
@@ -288,27 +308,29 @@ function openEditProduct(pid) {
       <div class="np-section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="np-label" style="margin:0">رنگ‌ها و موجودی</div>
-          <button class="chip" id="epAddVariant" style="font-size:12px;padding:8px 14px">+ افزودن</button>
+          <button type="button" class="chip" id="epAddVariant" style="font-size:12px;padding:8px 14px">+ افزودن</button>
         </div>
         <div id="epVariants"></div>
       </div>
       <div class="err" id="epErr"></div>
       <div style="display:flex;gap:10px;margin-top:20px">
-        <button class="checkout-btn" id="epSave" style="flex:1">✓ ذخیره تغییرات</button>
-        <button class="chip" id="epCancel" style="padding:14px 24px">لغو</button>
+        <button type="button" class="checkout-btn" id="epSave" style="flex:1">✓ ذخیره تغییرات</button>
+        <button type="button" class="chip" id="epCancel" style="padding:14px 24px">لغو</button>
       </div>
     </div>
   `;
-  let images = [p.image, ...(p.gallery || []).map(g => g.url)];
-  let variants = p.variants.map(v => ({ color: v.color, size: v.size, stock: v.stock }));
+  let images = [p.image, ...((p.gallery || []).map(g => g.url))].filter(Boolean);
+  if (!images.length) images = [''];
+  let variants = (p.variants || []).map(v => ({ color: v.color, size: v.size, stock: v.stock }));
 
   function renderImages() {
     const wrap = $('#epImagesGrid');
+    if (!wrap) return;
     wrap.innerHTML = images.map((url, i) => `
       <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-ep-img="${i}">
         ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">📸 عکس ${i + 1}<br>(کلیک کن)</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
-        ${url ? `<button class="del-btn" data-ep-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
+        ${url ? `<button type="button" class="del-btn" data-ep-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
     `).join('') + (images.length < 5 ? `
       <div style="aspect-ratio:4/5;border-radius:12px;background:var(--ink);border:1px dashed var(--line-2);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-ep-img-add>
@@ -357,12 +379,13 @@ function openEditProduct(pid) {
 
   function renderVariants() {
     const wrap = $('#epVariants');
+    if (!wrap) return;
     wrap.innerHTML = variants.map((v, i) => `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center">
         <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
         <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
         <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <button class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
+        <button type="button" class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
       </div>
     `).join('');
     wrap.querySelectorAll('input').forEach(inp => {
@@ -428,11 +451,14 @@ function openEditProduct(pid) {
     } catch (e) { showErr(e.message); }
     finally { btn.disabled = false; btn.textContent = '✓ ذخیره تغییرات'; }
   };
+  modal.classList.add('on');
+  state.modalOpen = true;
+  updateScrollLock();
 }
 
 async function openGalleryManager(pid) {
-  const p = state.products.find(x => x.id === pid);
-  if (!p) return;
+  const p = state.products.find(x => Number(x.id) === Number(pid));
+  if (!p) { toast('محصول پیدا نشد', 'err'); return; }
   const modal = $('#modal');
   const box = $('#modalBox');
   box.classList.add('modal__box--wide');
@@ -442,15 +468,15 @@ async function openGalleryManager(pid) {
       <div style="padding:32px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
           <h2 style="margin:0">گالری: ${esc(p.name)}</h2>
-          <button class="close-x" id="gmClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button type="button" class="close-x" id="gmClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
           <input type="file" id="gmFile" accept="image/*" style="display:none">
-          <button class="chip" id="gmUpload">📁 افزودن عکس</button>
-          <button class="chip" id="gmUrl">🔗 افزودن با URL</button>
+          <button type="button" class="chip" id="gmUpload">📁 افزودن عکس</button>
+          <button type="button" class="chip" id="gmUrl">🔗 افزودن با URL</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px" id="gmGrid">
-          ${gallery.length ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('') : '<p style="color:var(--dim);grid-column:1/-1">هنوز عکسی تو گالری نیست.</p>'}
+          ${gallery.length ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button type="button" class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('') : '<p style="color:var(--dim);grid-column:1/-1">هنوز عکسی تو گالری نیست.</p>'}
         </div>
       </div>
     `;
@@ -469,7 +495,7 @@ async function openGalleryManager(pid) {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'خطا');
         await api(`/api/admin/products/${pid}/gallery`, { method: 'POST', body: JSON.stringify({ url: data.url }) });
-        const fresh = (await api('/api/products')).products.find(x => x.id === pid);
+        const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
         gallery = fresh?.gallery || [];
         toast('عکس اضافه شد ✓');
         await loadProducts();
@@ -481,7 +507,7 @@ async function openGalleryManager(pid) {
       if (!url) return;
       try {
         await api(`/api/admin/products/${pid}/gallery`, { method: 'POST', body: JSON.stringify({ url }) });
-        const fresh = (await api('/api/products')).products.find(x => x.id === pid);
+        const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
         gallery = fresh?.gallery || [];
         toast('عکس اضافه شد ✓');
         await loadProducts();
@@ -493,7 +519,7 @@ async function openGalleryManager(pid) {
         if (!await confirmDialog('حذف عکس', 'این عکس از گالری حذف شود؟')) return;
         try {
           await api('/api/admin/gallery/' + b.dataset.gdel, { method: 'DELETE' });
-          const fresh = (await api('/api/products')).products.find(x => x.id === pid);
+          const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
           gallery = fresh?.gallery || [];
           toast('حذف شد');
           await loadProducts();
@@ -517,19 +543,12 @@ async function loadAddProduct() {
       <div class="np-section">
         <div class="np-label">تصاویر محصول (حداقل ۱، حداکثر ۵)</div>
         <div id="npImagesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:12px"></div>
-        <div style="color:var(--dim);font-size:11.5px;line-height:1.7">
-          • عکس اول = تصویر اصلی محصول<br>
-          • بقیه عکس‌ها به صورت اسلایدر نمایش داده می‌شن<br>
-          • حداکثر ۵ مگابایت هر عکس
-        </div>
+        <div style="color:var(--dim);font-size:11.5px;line-height:1.7">• عکس اول = تصویر اصلی محصول<br>• بقیه عکس‌ها به صورت اسلایدر نمایش داده می‌شن<br>• حداکثر ۵ مگابایت هر عکس</div>
       </div>
       <div class="np-grid">
         <div class="np-field"><label>نام محصول *</label><input type="text" id="npName" placeholder="مثلاً تیشرت BAD BOY"></div>
         <div class="np-field"><label>دسته‌بندی</label>
-          <select id="npCategory">
-            <option value="tshirt">تیشرت</option><option value="hoodie">هودی</option><option value="shirt">پیراهن</option>
-            <option value="pants">شلوار</option><option value="jacket">کاپشن</option><option value="accessory">اکسسوری</option>
-          </select>
+          <select id="npCategory"><option value="tshirt">تیشرت</option><option value="hoodie">هودی</option><option value="shirt">پیراهن</option><option value="pants">شلوار</option><option value="jacket">کاپشن</option><option value="accessory">اکسسوری</option></select>
         </div>
         <div class="np-field"><label>قیمت (تومان) *</label><input type="number" id="npPrice" placeholder="960000" min="0"></div>
         <div class="np-field"><label>قیمت قبل از تخفیف</label><input type="number" id="npComparePrice" placeholder="1200000" min="0"></div>
@@ -542,14 +561,14 @@ async function loadAddProduct() {
       <div class="np-section" style="margin-top:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div class="np-label" style="margin:0">رنگ‌ها و سایزها *</div>
-          <button class="chip" id="npAddVariant" style="font-size:12px;padding:8px 14px">+ افزودن</button>
+          <button type="button" class="chip" id="npAddVariant" style="font-size:12px;padding:8px 14px">+ افزودن</button>
         </div>
         <div id="npVariants"></div>
       </div>
       <div id="npErr" class="err" style="margin-top:20px"></div>
       <div style="display:flex;gap:10px;margin-top:20px">
-        <button class="checkout-btn" id="npSubmit" style="flex:1">✓ ثبت محصول</button>
-        <button class="chip" id="npReset" style="padding:14px 24px">پاک کردن</button>
+        <button type="button" class="checkout-btn" id="npSubmit" style="flex:1">✓ ثبت محصول</button>
+        <button type="button" class="chip" id="npReset" style="padding:14px 24px">پاک کردن</button>
       </div>
     </div></div>
   `;
@@ -562,7 +581,7 @@ async function loadAddProduct() {
       <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-img-slot="${i}">
         ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">${i === 0 ? '📸 عکس اصلی<br>(کلیک کن)' : `📸 عکس ${i + 1}<br>(کلیک کن)`}</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
-        ${url ? `<button class="del-btn" data-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
+        ${url ? `<button type="button" class="del-btn" data-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
     `).join('') + (images.length < 5 ? `<div style="aspect-ratio:4/5;border-radius:12px;background:var(--ink);border:1px dashed var(--line-2);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-img-add><div style="text-align:center;font-size:11px"><div style="font-size:24px;margin-bottom:4px;opacity:.5">+</div>افزودن عکس</div></div>` : '');
     wrap.querySelectorAll('[data-img-slot]').forEach(slot => {
@@ -611,7 +630,7 @@ async function loadAddProduct() {
         <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
         <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
         <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <button class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
+        <button type="button" class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
       </div>
     `).join('');
     wrap.querySelectorAll('input').forEach(inp => {
@@ -680,8 +699,8 @@ async function loadStock() {
             <div class="vrow__label"><span class="dot dot--${colorCls}"></span><b>${esc(v.color)}</b><span style="color:var(--dim)">·</span><b>${esc(v.size)}</b><small>(${fmtNum(v.stock)} عدد)</small></div>
             <input type="number" min="1" value="1" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">
             <div class="vrow__btns">
-              <button class="plus" data-act="inc" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">+</button>
-              <button class="minus" data-act="dec" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">−</button>
+              <button type="button" class="plus" data-act="inc" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">+</button>
+              <button type="button" class="minus" data-act="dec" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">−</button>
             </div>
           </div>`;
         }).join('');
@@ -720,7 +739,7 @@ async function loadOrders() {
         <option value="">همه وضعیت‌ها</option><option value="pending">در انتظار</option><option value="confirmed">تایید شده</option>
         <option value="shipped">ارسال شده</option><option value="delivered">تحویل شده</option><option value="cancelled">لغو شده</option>
       </select>
-      <button class="chip" id="ordExport">📥 CSV</button>
+      <button type="button" class="chip" id="ordExport">📥 CSV</button>
     </div>
     <div id="ordList"></div>
   `;
@@ -770,11 +789,13 @@ function renderOrdersList(el, orders) {
     const date = new Date(o.created_at).toLocaleString('fa-IR');
     const phoneDigits = String(o.phone).replace(/\D/g,'');
     const tgLink = `https://t.me/+98${phoneDigits.replace(/^0/,'')}`;
+    const payBadge = o.payment && o.payment.status === 'verified' ? `<span class="pill delivered" style="margin-inline-start:6px">💳 پرداخت شده</span>` : (o.payment && o.payment.status === 'pending' ? `<span class="pill pending" style="margin-inline-start:6px">⏳ پرداخت</span>` : '');
     return `<div class="ocard">
       <div class="ocard__head">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <span class="ocard__no mono">${esc(o.order_no)}</span>
           <span class="pill ${st.c}">${st.l}</span>
+          ${payBadge}
         </div>
         <span class="ocard__date">${esc(date)}</span>
       </div>
@@ -783,6 +804,7 @@ function renderOrdersList(el, orders) {
         ${o.address ? `<br><span style="color:var(--dim);font-size:12px">📍 ${esc(o.address)}</span>` : ''}
         ${o.note ? `<br><span style="color:var(--gold);font-size:12px">📝 ${esc(o.note)}</span>` : ''}
         ${o.tracking_no ? `<br><span style="color:var(--lime);font-size:12px">📦 کد رهگیری: <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
+        ${o.payment && o.payment.ref_number ? `<br><span style="color:var(--green);font-size:12px">💳 شماره پیگیری: <b class="mono">${esc(o.payment.ref_number)}</b></span>` : ''}
       </div>
       <div class="ocard__items">${o.items.map(i => `• <b>${esc(i.name)}</b> — ${esc(i.color)} · ${esc(i.size)} · ×${fmtNum(i.qty)} = ${fmt(i.price * i.qty)}`).join('<br>')}</div>
       ${o.notes?.length ? `<div class="ocard__notes"><div style="color:var(--dim);font-size:11px;margin-bottom:6px;letter-spacing:.05em">یادداشت‌ها</div>${o.notes.map(n => `<div class="nt">${esc(n.note)} <span style="color:var(--faint);font-size:10px">— ${esc(n.created_at)}</span></div>`).join('')}</div>` : ''}
@@ -791,9 +813,9 @@ function renderOrdersList(el, orders) {
         <div class="ocard__actions">
           <a class="nt-btn" href="${tgLink}" target="_blank" rel="noopener" style="text-decoration:none">✈️ تلگرام</a>
           <select class="status-sel" data-no="${esc(o.order_no)}">${statuses.map(s => `<option value="${s.v}" ${s.v === o.status ? 'selected' : ''}>${s.l}</option>`).join('')}</select>
-          <button class="nt-btn" data-tracking="${esc(o.order_no)}">📦 رهگیری</button>
-          <button class="nt-btn" data-note="${esc(o.order_no)}">📝 یادداشت</button>
-          <button class="del-btn" data-del="${esc(o.order_no)}">🗑 حذف</button>
+          <button type="button" class="nt-btn" data-tracking="${esc(o.order_no)}">📦 رهگیری</button>
+          <button type="button" class="nt-btn" data-note="${esc(o.order_no)}">📝 یادداشت</button>
+          <button type="button" class="del-btn" data-del="${esc(o.order_no)}">🗑 حذف</button>
         </div>
       </div>
     </div>`;
@@ -826,13 +848,13 @@ function showNoteModal(orderNo, onDone) {
   const box = $('#modalBox');
   box.classList.remove('modal__box--wide');
   box.innerHTML = `
-    <button class="close-x" id="ntmClose" style="position:absolute;top:16px;left:16px">
+    <button type="button" class="close-x" id="ntmClose" style="position:absolute;top:16px;left:16px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <h2>یادداشت سفارش</h2><p class="sub">${esc(orderNo)}</p>
     <div class="field"><textarea id="ntText" placeholder="مثلاً: با مشتری تماس گرفتم، ارسال فردا"></textarea></div>
     <div class="err" id="ntErr"></div>
-    <button class="checkout-btn" id="ntSave">ثبت یادداشت</button>
+    <button type="button" class="checkout-btn" id="ntSave">ثبت یادداشت</button>
   `;
   $('#ntmClose').onclick = () => { modal.classList.remove('on'); state.modalOpen = false; updateScrollLock(); };
   $('#ntSave').onclick = async () => {
@@ -858,13 +880,13 @@ function showTrackingModal(orderNo, onDone) {
   box.classList.remove('modal__box--wide');
   const order = state.adminOrders.find(o => o.order_no === orderNo);
   box.innerHTML = `
-    <button class="close-x" id="trmClose" style="position:absolute;top:16px;left:16px">
+    <button type="button" class="close-x" id="trmClose" style="position:absolute;top:16px;left:16px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <h2>کد رهگیری پستی</h2><p class="sub">${esc(orderNo)}</p>
     <div class="field"><label>کد رهگیری</label><input type="text" id="trmCode" value="${esc(order?.tracking_no || '')}" placeholder="مثلاً 12345678901234567890" class="mono"></div>
     <div class="err" id="trmErr"></div>
-    <button class="checkout-btn" id="trmSave">ذخیره</button>
+    <button type="button" class="checkout-btn" id="trmSave">ذخیره</button>
   `;
   $('#trmClose').onclick = () => { modal.classList.remove('on'); state.modalOpen = false; updateScrollLock(); };
   $('#trmSave').onclick = async () => {
@@ -899,7 +921,7 @@ async function loadCoupons() {
           <input type="number" id="ncMin" placeholder="حداقل خرید" min="0" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
           <input type="text" id="ncLabel" placeholder="برچسب" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
         </div>
-        <button class="checkout-btn" id="ncAdd" style="padding:12px 24px;font-size:13px;width:auto">افزودن کد</button>
+        <button type="button" class="checkout-btn" id="ncAdd" style="padding:12px 24px;font-size:13px;width:auto">افزودن کد</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
         ${coupons.map(c => `<div class="prod-admin" style="padding:18px">
@@ -914,8 +936,8 @@ async function loadCoupons() {
             ${c.min_total > 0 ? `<br>حداقل خرید: <b style="color:var(--text)">${fmt(c.min_total)}</b>` : ''}
           </div>
           <div style="display:flex;gap:8px;margin-top:12px">
-            <button class="nt-btn" data-toggle-coupon="${esc(c.code)}" data-active="${c.active}" style="flex:1">${c.active ? 'غیرفعال' : 'فعال'}</button>
-            <button class="del-btn" data-del-coupon="${esc(c.code)}">🗑</button>
+            <button type="button" class="nt-btn" data-toggle-coupon="${esc(c.code)}" data-active="${c.active}" style="flex:1">${c.active ? 'غیرفعال' : 'فعال'}</button>
+            <button type="button" class="del-btn" data-del-coupon="${esc(c.code)}">🗑</button>
           </div>
         </div>`).join('')}
       </div>
@@ -977,8 +999,8 @@ async function loadReviews() {
         <div class="ocard__cust"><b>${esc(r.name)}</b> روی <b>${esc(r.product_name)}</b></div>
         <div style="font-size:13px;color:var(--dim);line-height:1.8;margin-bottom:12px">${esc(r.comment)}</div>
         <div style="display:flex;gap:8px">
-          <button class="nt-btn" data-approve="${r.id}" data-val="${r.approved ? 0 : 1}">${r.approved ? 'لغو تایید' : '✓ تایید'}</button>
-          <button class="del-btn" data-del-review="${r.id}">🗑 حذف</button>
+          <button type="button" class="nt-btn" data-approve="${r.id}" data-val="${r.approved ? 0 : 1}">${r.approved ? 'لغو تایید' : '✓ تایید'}</button>
+          <button type="button" class="del-btn" data-del-review="${r.id}">🗑 حذف</button>
         </div>
       </div>
     `).join('');
@@ -1021,7 +1043,7 @@ async function loadContentPanel() {
           </div>
           <div style="flex:1;min-width:200px">
             <input type="file" id="cv-file-${key}" accept="image/*" style="display:none">
-            <button class="chip" data-upload-key="${key}" style="width:100%;margin-bottom:6px">📁 تغییر عکس</button>
+            <button type="button" class="chip" data-upload-key="${key}" style="width:100%;margin-bottom:6px">📁 تغییر عکس</button>
             <input type="text" id="cv-url-${key}" value="${esc(content[key] || '')}" placeholder="یا URL مستقیم..." style="width:100%;padding:8px 12px;background:var(--ink);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:11.5px">
           </div>
         </div>
@@ -1050,8 +1072,8 @@ async function loadContentPanel() {
         </div>
         <div id="cv-err" class="err"></div>
         <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
-          <button class="checkout-btn" id="cvSave" style="flex:1;min-width:200px">✓ ذخیره همه تغییرات</button>
-          <button class="chip" id="cvReload" style="padding:14px 24px">🔄 بازخوانی</button>
+          <button type="button" class="checkout-btn" id="cvSave" style="flex:1;min-width:200px">✓ ذخیره همه تغییرات</button>
+          <button type="button" class="chip" id="cvReload" style="padding:14px 24px">🔄 بازخوانی</button>
         </div>
       </div></div>
     `;
@@ -1101,8 +1123,8 @@ async function loadContentPanel() {
       try {
         await api('/api/admin/content', { method: 'POST', body: JSON.stringify(payload) });
         state.content = { ...(state.content || {}), ...payload };
-        localStorage.setItem('gshop_content_cache', JSON.stringify(state.content));
-        applyContent();
+        localStorage.setItem(CONTENT_CACHE, JSON.stringify(state.content));
+        if (typeof window.applyContent === 'function') window.applyContent();
         toast('محتوا ذخیره شد ✓');
       } catch (e) {
         err.textContent = e.message;
@@ -1153,8 +1175,8 @@ async function loadSettingsPanel() {
         </div>
         <div id="stErr" class="err"></div>
         <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
-          <button class="checkout-btn" id="stSave" style="flex:1;min-width:200px">✓ ذخیره تنظیمات</button>
-          <button class="chip" id="stReset" style="padding:14px 24px">🔄 بازخوانی</button>
+          <button type="button" class="checkout-btn" id="stSave" style="flex:1;min-width:200px">✓ ذخیره تنظیمات</button>
+          <button type="button" class="chip" id="stReset" style="padding:14px 24px">🔄 بازخوانی</button>
         </div>
       </div></div>
     `;
@@ -1172,7 +1194,7 @@ async function loadSettingsPanel() {
       try {
         await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(payload) });
         state.settings = { ...state.settings, ...payload };
-        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(state.settings));
+        localStorage.setItem(SETTINGS_CACHE, JSON.stringify(state.settings));
         applySettings();
         toast('تنظیمات ذخیره شد ✓');
       } catch (e) { err.textContent = e.message; err.classList.add('on'); }
