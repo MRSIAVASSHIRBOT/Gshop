@@ -151,7 +151,7 @@ async function loadDashboard() {
     };
     $('#clearCache').onclick = () => {
       localStorage.removeItem(SETTINGS_CACHE_KEY);
-      localStorage.removeItem(CONTENT_CACHE_KEY);
+      localStorage.removeItem('gshop_content_cache');
       toast('کش پاک شد. صفحه رو رفرش کن ✓');
     };
   } catch (e) {
@@ -1100,7 +1100,7 @@ async function loadContentPanel() {
       try {
         await api('/api/admin/content', { method: 'POST', body: JSON.stringify(payload) });
         state.content = { ...(state.content || {}), ...payload };
-        localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(state.content));
+        localStorage.setItem('gshop_content_cache', JSON.stringify(state.content));
         applyContent();
         toast('محتوا ذخیره شد ✓');
       } catch (e) {
