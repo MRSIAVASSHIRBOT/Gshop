@@ -1,7 +1,0 @@
-name = "gshopsite"
-compatibility_date = "2024-11-02"
-
-[assets]
-directory = "."
-not_found_handling = "single-page-application"
-exclude = ["worker.js", "wrangler.toml", "README.md", ".gitignore", "content.js"]
