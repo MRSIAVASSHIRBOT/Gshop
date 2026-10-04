@@ -592,3 +592,8 @@ footer{padding:80px 0 40px;border-top:1px solid var(--line);position:relative;z-
   .compare-table td{padding:10px 8px;font-size:12px}
   .compare-table img{width:80px}
 }
+/* Fix: تداخل float-cart با back-top */
+.back-top.shifted { bottom: 90px; }
+@media (max-width: 700px) {
+  .back-top.shifted { bottom: 90px; }
+}
