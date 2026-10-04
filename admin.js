@@ -1,3 +1,4 @@
+window.applyContent = window.applyContent || function(){};
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
 
 function openAdmin() {
