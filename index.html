@@ -15,12 +15,32 @@
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
 <link rel="canonical" href="https://gshop11.ir" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23d4ff3f'/%3E%3Ctext x='50' y='70' font-family='sans-serif' font-size='60' font-weight='900' text-anchor='middle' fill='%230a0a0a'%3EG%3C/text%3E%3C/svg%3E">
+
 <title>G_SHOP — پوشاک اسپرت</title>
+
+<!-- FOUC prevention — قبل از CSS لود می‌شه -->
+<script>
+(function() {
+  try {
+    var manual = localStorage.getItem('gshop_theme_manual');
+    var theme = localStorage.getItem('gshop_theme');
+    if (manual === 'true' && (theme === 'light' || theme === 'dark')) {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } catch (e) {}
+})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -35,13 +55,9 @@
 </head>
 <body>
 
-<!-- Scroll Progress -->
 <div class="scroll-progress"><div class="scroll-progress__bar" id="scrollBar"></div></div>
-
-<!-- Offline banner -->
 <div class="offline-banner" id="offlineBanner">📡 اتصال اینترنت قطع است</div>
 
-<!-- Ticker -->
 <div class="ticker" id="ticker">
   <div class="ticker__track" id="tickerTrack">
     <span>ارسال رایگان بالای ۱ میلیون تومان</span>
@@ -55,7 +71,6 @@
   </div>
 </div>
 
-<!-- NAV -->
 <nav class="nav" id="nav">
   <div class="wrap nav__inner">
     <a href="#" class="nav__brand" data-nav="home"><span id="brandName">G_SHOP</span><span class="dot">.</span></a>
@@ -101,7 +116,6 @@
   </div>
 </nav>
 
-<!-- MOBILE MENU -->
 <div class="mobile-menu" id="mobileMenu">
   <div class="mobile-menu__head">
     <span class="mobile-menu__brand"><span id="brandNameMobile">G_SHOP</span><span class="dot">.</span></span>
@@ -124,7 +138,6 @@
   </div>
 </div>
 
-<!-- HERO -->
 <section class="hero">
   <div class="hero__glow"></div>
   <div class="hero__glow-2"></div>
@@ -168,15 +181,14 @@
     </div>
     <div class="hero__visual">
       <div class="hero__card">
-        <img id="heroImg1" src="https://picsum.photos/seed/badboy/900/1200" alt="">
+        <img id="heroImg1" src="https://picsum.photos/seed/badboy/900/1200" alt="کالکشن جدید" loading="eager">
         <div class="hero__card__meta"><h3 id="heroCardTitle"></h3><span class="price" id="heroCardPrice"></span></div>
       </div>
-      <div class="hero__card"><img id="heroImg2" src="https://picsum.photos/seed/tshirt23/900/1200" alt=""></div>
+      <div class="hero__card"><img id="heroImg2" src="https://picsum.photos/seed/tshirt23/900/1200" alt="" loading="lazy"></div>
     </div>
   </div>
 </section>
 
-<!-- LOOKBOOK -->
 <section class="sec" id="lookbook">
   <div class="wrap">
     <div class="sec__head reveal">
@@ -185,22 +197,21 @@
     </div>
     <div class="editorial">
       <a class="ed ed--big reveal" data-nav="products">
-        <img id="lookbookBigImg" src="https://picsum.photos/seed/editorial1/1200/1500" alt="">
+        <img id="lookbookBigImg" src="https://picsum.photos/seed/editorial1/1200/1500" alt="لوک‌بوک" loading="lazy">
         <div class="ed__meta"><span class="tag" id="lookbookBigTag">مجموعه اصلی</span><h3 id="lookbookBigTitle">STREET ESSENTIALS</h3><p id="lookbookBigSub">پایه‌های استایل اسپرت — مینیمال، راحت، ماندگار</p></div>
       </a>
       <a class="ed reveal" data-nav="products">
-        <img id="lookbookS1Img" src="https://picsum.photos/seed/editorial2/900/1200" alt="">
+        <img id="lookbookS1Img" src="https://picsum.photos/seed/editorial2/900/1200" alt="" loading="lazy">
         <div class="ed__meta"><span class="tag" id="lookbookS1Tag">جدید</span><h3 id="lookbookS1Title">BLACK SERIES</h3></div>
       </a>
       <a class="ed reveal" data-nav="products">
-        <img id="lookbookS2Img" src="https://picsum.photos/seed/editorial3/900/1200" alt="">
+        <img id="lookbookS2Img" src="https://picsum.photos/seed/editorial3/900/1200" alt="" loading="lazy">
         <div class="ed__meta"><span class="tag" id="lookbookS2Tag">محدود</span><h3 id="lookbookS2Title">LIMITED DROP</h3></div>
       </a>
     </div>
   </div>
 </section>
 
-<!-- PRODUCTS -->
 <section class="sec" id="products" style="padding-top:20px">
   <div class="wrap">
     <div class="sec__head reveal">
@@ -209,8 +220,8 @@
     </div>
     <div class="toolbar reveal">
       <div class="toolbar__search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="جستجوی محصول..." aria-label="جستجو">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="جستجوی محصول..." aria-label="جستجو" autocomplete="off">
       </div>
       <select id="categorySelect" class="category-select" aria-label="دسته‌بندی">
         <option value="">همه دسته‌ها</option>
@@ -232,7 +243,6 @@
   </div>
 </section>
 
-<!-- RECENTLY VIEWED -->
 <section class="sec" id="recentSec" style="padding-top:0;display:none">
   <div class="wrap">
     <div class="sec__head reveal"><h2 style="font-size:32px">اخیراً دیده‌شده</h2></div>
@@ -240,7 +250,6 @@
   </div>
 </section>
 
-<!-- TESTIMONIALS -->
 <section class="testimonials" id="testimonials">
   <div class="wrap">
     <div class="testimonials__head reveal">
@@ -251,7 +260,6 @@
   </div>
 </section>
 
-<!-- STORY -->
 <section class="story" id="story">
   <div class="wrap">
     <div class="story__grid">
@@ -269,12 +277,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
       </div>
-      <div class="story__img reveal"><img id="storyImg" src="https://picsum.photos/seed/story/1000/1300" alt="داستان G_SHOP"></div>
+      <div class="story__img reveal"><img id="storyImg" src="https://picsum.photos/seed/story/1000/1300" alt="داستان G_SHOP" loading="lazy"></div>
     </div>
   </div>
 </section>
 
-<!-- FAQ -->
 <section class="faq" id="faq">
   <div class="wrap">
     <div class="faq__head reveal">
@@ -283,42 +290,42 @@
     </div>
     <div class="faq__list" id="faqList">
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>هزینه و زمان ارسال چقدره؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
         <div class="faq__a"><p>هزینه ارسال با شماست ، البته مناسبت های وجود خواهد داشت که به مدت محدودی یا ارسال رایگان خواهد شد یا کد تخفیف به شما داده خواهد شد ✨</p></div>
       </div>
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>سایزبندی چطوره؟ اگه سایزم نخورد چی؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
         <div class="faq__a"><p>راهنمای سایز برای هر محصول موجوده. اگه بین دو سایز هستی، پیشنهاد می‌کنیم بزرگ‌تر رو انتخاب کنی. اگه با این حال سایز نخورد، تا ۳ روز بعد از دریافت می‌تونی تعویض کنی (به شرط استفاده نشدن و باقی بودن تگ).</p></div>
       </div>
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>چطور سفارشم رو پیگیری کنم؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
         <div class="faq__a"><p>بعد از ثبت سفارش، یه شماره سفارش بهت داده می‌شه (مثلاً GS-12345678). از بخش «پیگیری سفارش» با وارد کردن شماره سفارش و شماره موبایلت، وضعیت لحظه‌ای رو ببین.</p></div>
       </div>
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>روش‌های پرداخت چیه؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
         <div class="faq__a"><p>روش پرداخت از طریق درگاه پرداخت آنلاین انجام میشه ، در صورت  پرداخت مبلغ محصول ، کد رهگیری همراه اسکرین شات از صفحه نشان دهنده موفقیت تراکنش را به پشتیبانی ارسال نمایید ✨</p></div>
       </div>
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>امکان مرجوعی کالا هست؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
         <div class="faq__a"><p>بله، تا ۳ روز بعد از دریافت، به شرط باز نشدن و استفاده نشدن لباس، امکان مرجوعی هست. برای هماهنگی از طریق تلگرام یا تلفن با پشتیبانی تماس بگیر.</p></div>
       </div>
       <div class="faq__item reveal">
-        <button class="faq__q">
+        <button class="faq__q" type="button">
           <span>کد تخفیف چطور کار می‌کنه؟</span>
           <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
         </button>
@@ -328,7 +335,6 @@
   </div>
 </section>
 
-<!-- INSTAGRAM -->
 <section class="instagram" id="instagram">
   <div class="wrap">
     <div class="instagram__head reveal">
@@ -339,17 +345,16 @@
       </a>
     </div>
     <div class="instagram__grid">
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg1" src="https://picsum.photos/seed/ig1/400/400" alt=""></a>
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg2" src="https://picsum.photos/seed/ig2/400/400" alt=""></a>
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg3" src="https://picsum.photos/seed/ig3/400/400" alt=""></a>
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg4" src="https://picsum.photos/seed/ig4/400/400" alt=""></a>
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg5" src="https://picsum.photos/seed/ig5/400/400" alt=""></a>
-      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg6" src="https://picsum.photos/seed/ig6/400/400" alt=""></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg1" src="https://picsum.photos/seed/ig1/400/400" alt="" loading="lazy"></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg2" src="https://picsum.photos/seed/ig2/400/400" alt="" loading="lazy"></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg3" src="https://picsum.photos/seed/ig3/400/400" alt="" loading="lazy"></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg4" src="https://picsum.photos/seed/ig4/400/400" alt="" loading="lazy"></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg5" src="https://picsum.photos/seed/ig5/400/400" alt="" loading="lazy"></a>
+      <a class="ig-item reveal" href="https://instagram.com/g__shop11" target="_blank" rel="noopener"><img id="igImg6" src="https://picsum.photos/seed/ig6/400/400" alt="" loading="lazy"></a>
     </div>
   </div>
 </section>
 
-<!-- TRACK ORDER -->
 <section class="sec" id="track">
   <div class="wrap">
     <div class="sec__head reveal" style="justify-content:center;text-align:center;flex-direction:column;align-items:center">
@@ -365,7 +370,6 @@
   </div>
 </section>
 
-<!-- FOOTER -->
 <footer id="contact">
   <div class="wrap">
     <div class="foot__top">
@@ -414,22 +418,18 @@
   </div>
 </footer>
 
-<!-- BACK TO TOP -->
 <button class="fab back-top" id="backTop" aria-label="بازگشت به بالا">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
 </button>
 
-<!-- LIVE CHAT -->
 <a class="fab live-chat" href="https://t.me/Alisdt98" target="_blank" rel="noopener" aria-label="پشتیبانی تلگرام" id="liveChat">
   <span class="live-chat__pulse"></span>
   <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
   <span class="live-chat__label">پشتیبانی تلگرام</span>
 </a>
 
-<!-- SCRIM -->
 <div class="scrim" id="scrim"></div>
 
-<!-- CART DRAWER -->
 <aside class="drawer" id="drawer" aria-label="سبد خرید">
   <div class="drawer__head">
     <h3>سبد خرید</h3>
@@ -439,7 +439,6 @@
   <div class="drawer__foot" id="cartFoot"></div>
 </aside>
 
-<!-- WISHLIST DRAWER -->
 <aside class="drawer drawer--left" id="wishDrawer" aria-label="علاقه‌مندی‌ها">
   <div class="drawer__head">
     <h3>علاقه‌مندی‌ها ❤</h3>
@@ -448,7 +447,6 @@
   <div class="drawer__body" id="wishBody"></div>
 </aside>
 
-<!-- ORDERS DRAWER -->
 <aside class="drawer drawer--left" id="ordersDrawer" aria-label="سفارش‌های من">
   <div class="drawer__head">
     <h3>سفارش‌های من 📋</h3>
@@ -457,10 +455,8 @@
   <div class="drawer__body" id="ordersBody"></div>
 </aside>
 
-<!-- MODAL -->
 <div class="modal" id="modal"><div class="modal__box" id="modalBox"></div></div>
 
-<!-- CONFIRM -->
 <div class="confirm-overlay" id="confirmOverlay">
   <div class="confirm-box">
     <h3 id="confirmTitle">تایید</h3>
@@ -469,7 +465,6 @@
   </div>
 </div>
 
-<!-- COMPARE BAR -->
 <div class="compare-bar" id="compareBar">
   <div class="compare-bar__items" id="compareItems"></div>
   <div class="compare-bar__info"><b id="compareCount">۰</b> محصول انتخاب شده</div>
@@ -479,7 +474,6 @@
   </button>
 </div>
 
-<!-- ADMIN -->
 <div class="admin" id="adminPanel">
   <div class="admin__bar">
     <h2><span id="brandNameAdmin">G_SHOP</span><span class="dot">.</span> <span style="color:var(--dim);font-size:14px;font-weight:400">پنل مدیریت</span></h2>
@@ -491,9 +485,10 @@
   <div class="admin__body" id="adminBody"></div>
 </div>
 
-<!-- TOASTS -->
 <div class="toasts" id="toasts"></div>
 
+<!-- ترتیب مهمه! -->
+<script src="keys.js"></script>
 <script src="content.js"></script>
 <script src="app.js"></script>
 <script src="admin.js"></script>
