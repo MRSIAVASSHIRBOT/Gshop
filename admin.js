@@ -1,14 +1,38 @@
-const CONTENT_CACHE = 'gshop_content_cache';
-const SETTINGS_CACHE = 'gshop_settings_cache_v6';
+/* ==========================================================
+   G_SHOP — admin.js
+   پنل مدیریت — production build v12
+   ========================================================== */
+'use strict';
+
+const K_ADMIN = window.GSHOP_KEYS || {};
+const ADMIN_TOKEN_KEY = K_ADMIN.ADMIN_TOKEN || 'gshop_admin_token';
+const CONTENT_CACHE_KEY = K_ADMIN.CONTENT_CACHE || 'gshop_content_cache_v7';
+const SETTINGS_CACHE_KEY = K_ADMIN.SETTINGS_CACHE || 'gshop_settings_cache_v7';
+
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
 
-function openAdmin() {
+/* ---------- Open/Close ---------- */
+async function openAdmin() {
   const panel = $('#adminPanel');
+  if (!panel) return;
   panel.classList.add('on');
-  if (localStorage.getItem(ADMIN_TOKEN_KEY)) { adminState.isAdmin = true; renderAdmin(); }
-  else { renderAdminLogin(); }
+
+  const token = safeGet(ADMIN_TOKEN_KEY);
+  if (!token) { renderAdminLogin(); return; }
+
+  try {
+    // verify توکن با یک endpoint سبک
+    await api('/api/admin/stats');
+    adminState.isAdmin = true;
+    renderAdmin();
+  } catch (e) {
+    if (e.status === 401) { safeStore(ADMIN_TOKEN_KEY, ''); localStorage.removeItem(ADMIN_TOKEN_KEY); }
+    renderAdminLogin();
+  }
 }
-function closeAdmin() { $('#adminPanel').classList.remove('on'); }
+
+function closeAdmin() { $('#adminPanel')?.classList.remove('on'); }
+
 async function adminLogout() {
   try { await api('/api/admin/logout', { method: 'POST' }); } catch {}
   localStorage.removeItem(ADMIN_TOKEN_KEY);
@@ -16,106 +40,130 @@ async function adminLogout() {
   renderAdminLogin();
 }
 
+/* ---------- Login ---------- */
 function renderAdminLogin() {
-  $('#adminBody').innerHTML = `
+  const body = $('#adminBody');
+  if (!body) return;
+  body.innerHTML = `
     <div class="login"><div class="modal__box" style="width:min(420px,100%);position:relative;transform:none;margin:0">
       <h2>ورود مدیر</h2><p class="sub">نام کاربری و رمز عبور را وارد کنید.</p>
-      <div class="field"><label>نام کاربری</label><input type="text" id="adminUser" value="admin" autocomplete="username"></div>
+      <div class="field"><label>نام کاربری</label><input type="text" id="adminUser" autocomplete="username"></div>
       <div class="field"><label>رمز عبور</label><input type="password" id="adminPw" placeholder="••••••••" autocomplete="current-password"></div>
       <div class="err" id="adminErr"></div>
-      <button class="checkout-btn" id="adminLogin">ورود</button>
+      <button type="button" class="checkout-btn" id="adminLogin">ورود</button>
     </div></div>
   `;
+
   const submit = async () => {
     const username = $('#adminUser').value.trim();
     const password = $('#adminPw').value;
     const err = $('#adminErr');
     err.classList.remove('on');
+
+    if (!username || !password) { err.textContent = 'نام کاربری و رمز عبور الزامی است'; err.classList.add('on'); return; }
+
+    const btn = $('#adminLogin');
+    btn.disabled = true; btn.textContent = 'در حال ورود...';
     try {
       const r = await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ username, password }) });
       localStorage.setItem(ADMIN_TOKEN_KEY, r.token);
       adminState.isAdmin = true;
       toast('خوش آمدید ✓');
       renderAdmin();
-    } catch (e) { err.textContent = e.message; err.classList.add('on'); }
+    } catch (e) {
+      err.textContent = e.message;
+      err.classList.add('on');
+      btn.disabled = false; btn.textContent = 'ورود';
+    }
   };
+
   $('#adminLogin').onclick = submit;
   $('#adminPw').onkeydown = e => { if (e.key === 'Enter') submit(); };
   setTimeout(() => $('#adminPw')?.focus(), 100);
 }
 
+/* ---------- Main Render ---------- */
 async function renderAdmin() {
   const body = $('#adminBody');
+  if (!body) return;
+
+  const TABS = [
+    ['dashboard', '📊 داشبورد'],
+    ['products',  '🛍️ محصولات'],
+    ['newproduct','➕ محصول جدید'],
+    ['stock',     '📦 موجودی'],
+    ['orders',    '🧾 سفارشات'],
+    ['coupons',   '🎟 کدها'],
+    ['reviews',   '⭐ نظرات'],
+    ['content',   '🎨 محتوا'],
+    ['settings',  '⚙️ تنظیمات'],
+    ['audit',     '📜 لاگ'],
+  ];
+
   body.innerHTML = `
     <div class="tabs" id="adminTabs">
-      <button class="tab active" data-tab="dashboard">📊 داشبورد</button>
-      <button class="tab" data-tab="products">🛍️ محصولات</button>
-      <button class="tab" data-tab="newproduct">➕ محصول جدید</button>
-      <button class="tab" data-tab="stock">📦 موجودی</button>
-      <button class="tab" data-tab="orders">🧾 سفارشات</button>
-      <button class="tab" data-tab="coupons">🎟 کدها</button>
-      <button class="tab" data-tab="reviews">⭐ نظرات</button>
-      <button class="tab" data-tab="content">🎨 محتوا</button>
-      <button class="tab" data-tab="settings">⚙️ تنظیمات</button>
-      <button class="tab" data-tab="audit">📜 لاگ</button>
+      ${TABS.map(([t, l]) => `<button type="button" class="tab ${t === 'dashboard' ? 'active' : ''}" data-tab="${t}">${l}</button>`).join('')}
     </div>
-    <div class="panel on" id="panel-dashboard"></div>
-    <div class="panel" id="panel-products"></div>
-    <div class="panel" id="panel-newproduct"></div>
-    <div class="panel" id="panel-stock"></div>
-    <div class="panel" id="panel-orders"></div>
-    <div class="panel" id="panel-coupons"></div>
-    <div class="panel" id="panel-reviews"></div>
-    <div class="panel" id="panel-content"></div>
-    <div class="panel" id="panel-settings"></div>
-    <div class="panel" id="panel-audit"></div>
+    ${TABS.map(([t]) => `<div class="panel ${t === 'dashboard' ? 'on' : ''}" id="panel-${t}"></div>`).join('')}
   `;
+
   body.querySelectorAll('.tab').forEach(t => {
     t.onclick = () => {
       body.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       body.querySelectorAll('.panel').forEach(x => x.classList.remove('on'));
       t.classList.add('active');
-      const panel = document.getElementById('panel-' + t.dataset.tab);
-      if (panel) panel.classList.add('on');
+      document.getElementById('panel-' + t.dataset.tab)?.classList.add('on');
       adminState.currentTab = t.dataset.tab;
       loadAdminTab();
     };
   });
+
   loadAdminTab();
 }
 
 async function loadAdminTab() {
   const v = adminState.currentTab;
+  const handlers = {
+    dashboard:  loadDashboard,
+    products:   loadProductsAdmin,
+    newproduct: loadAddProduct,
+    stock:      loadStock,
+    orders:     loadOrders,
+    coupons:    loadCoupons,
+    reviews:    loadReviews,
+    content:    loadContentPanel,
+    settings:   loadSettingsPanel,
+    audit:      loadAudit,
+  };
   try {
-    if (v === 'dashboard') await loadDashboard();
-    else if (v === 'products') await loadProductsAdmin();
-    else if (v === 'newproduct') await loadAddProduct();
-    else if (v === 'stock') await loadStock();
-    else if (v === 'orders') await loadOrders();
-    else if (v === 'coupons') await loadCoupons();
-    else if (v === 'reviews') await loadReviews();
-    else if (v === 'content') await loadContentPanel();
-    else if (v === 'settings') await loadSettingsPanel();
-    else if (v === 'audit') await loadAudit();
+    if (handlers[v]) await handlers[v]();
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
-    else console.error(e);
+    if (e.status === 401 || String(e.message).includes('دسترسی')) adminLogout();
+    else console.error('[admin]', v, e);
   }
 }
 
+/* ---------- Dashboard ---------- */
 async function loadDashboard() {
   const el = $('#panel-dashboard');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
-    const s = await api('/api/admin/stats');
-    const low = await api('/api/admin/low-stock');
+    const [s, low] = await Promise.all([
+      api('/api/admin/stats'),
+      api('/api/admin/low-stock'),
+    ]);
+
     let chartHTML = '';
-    if (s.salesChart && s.salesChart.length) {
-      const max = Math.max(...s.salesChart.map(x => x.total), 1);
+    if (Array.isArray(s.salesChart) && s.salesChart.length) {
+      const max = Math.max(...s.salesChart.map(x => Number(x.total) || 0), 1);
       chartHTML = `<div class="chart"><h3>📊 فروش ۷ روز اخیر</h3><div class="chart__bars">
-        ${s.salesChart.map(x => `<div class="chart__bar" style="height:${(x.total / max * 100) || 2}%" data-val="${fmtNum(x.total)}"><span>${esc(x.d.split('-').slice(1).join('/'))}</span></div>`).join('')}
+        ${s.salesChart.map(x => `<div class="chart__bar" style="height:${((Number(x.total) || 0) / max * 100) || 2}%" data-val="${fmtNum(x.total)}"><span>${esc(String(x.d).split('-').slice(1).join('/'))}</span></div>`).join('')}
       </div></div>`;
     }
+
+    const lowItems = Array.isArray(low.items) ? low.items : [];
+
     el.innerHTML = `
       <div class="stats">
         <div class="stat"><div class="stat__l">تعداد سفارشات</div><div class="stat__v lime">${fmtNum(s.totalOrders)}</div></div>
@@ -125,49 +173,60 @@ async function loadDashboard() {
       </div>
       ${chartHTML}
       <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap">
-        <button class="chip" id="testTelegram" style="padding:11px 20px">🔔 تست تلگرام</button>
-        <button class="chip" id="exportCSV" style="padding:11px 20px">📥 خروجی CSV</button>
-        <button class="chip" id="clearCache" style="padding:11px 20px">🔄 پاک کردن کش</button>
+        <button type="button" class="chip" id="testTelegram" style="padding:11px 20px">🔔 تست تلگرام</button>
+        <button type="button" class="chip" id="exportCSV" style="padding:11px 20px">📥 خروجی CSV</button>
+        <button type="button" class="chip" id="clearCache" style="padding:11px 20px">🔄 پاک کردن کش</button>
       </div>
-      ${low.items.length ? `<div style="background:color-mix(in srgb,var(--gold) 8%,transparent);border:1px solid color-mix(in srgb,var(--gold) 30%,transparent);border-radius:16px;padding:18px;margin-bottom:20px">
-        <div style="color:var(--gold);font-weight:700;margin-bottom:10px">⚠ هشدار موجودی کم (${fmtNum(low.items.length)} مورد)</div>
-        <div style="color:var(--dim);font-size:13px;line-height:2">${low.items.map(i => `• ${esc(i.product_name)} — ${esc(i.color)} ${esc(i.size)}: ${fmtNum(i.stock)} عدد`).join('<br>')}</div>
-      </div>` : ''}
-      ${s.recentOrders?.length ? `<div class="chart"><h3>🕐 آخرین سفارشات</h3>
-        ${s.recentOrders.map(o => `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap;gap:8px"><span class="mono" style="color:var(--lime)">${esc(o.order_no)}</span><span>${esc(o.name)}</span><span style="font-family:'Space Grotesk',sans-serif">${fmt(o.total)}</span></div>`).join('')}
-      </div>` : ''}
+      ${lowItems.length ? `
+        <div style="background:color-mix(in srgb,var(--gold) 8%,transparent);border:1px solid color-mix(in srgb,var(--gold) 30%,transparent);border-radius:16px;padding:18px;margin-bottom:20px">
+          <div style="color:var(--gold);font-weight:700;margin-bottom:10px">⚠ هشدار موجودی کم (${fmtNum(lowItems.length)} مورد)</div>
+          <div style="color:var(--dim);font-size:13px;line-height:2">${lowItems.map(i => `• ${esc(i.product_name)} — ${esc(i.color)} ${esc(i.size)}: ${fmtNum(i.stock)} عدد`).join('<br>')}</div>
+        </div>
+      ` : ''}
+      ${Array.isArray(s.recentOrders) && s.recentOrders.length ? `
+        <div class="chart"><h3>🕐 آخرین سفارشات</h3>
+          ${s.recentOrders.map(o => `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap;gap:8px"><span class="mono" style="color:var(--lime)">${esc(o.order_no)}</span><span>${esc(o.name)}</span><span style="font-family:'Space Grotesk',sans-serif">${fmt(o.total)}</span></div>`).join('')}
+        </div>
+      ` : ''}
     `;
+
     $('#testTelegram').onclick = async () => {
-      const btn = $('#testTelegram'); btn.disabled = true;
-      const old = btn.textContent; btn.textContent = '⏳ در حال ارسال...';
+      const btn = $('#testTelegram');
+      btn.disabled = true; const old = btn.textContent; btn.textContent = '⏳ در حال ارسال...';
       try { await api('/api/admin/telegram-test', { method: 'POST' }); toast('پیام تست ارسال شد ✓'); }
       catch (e) { toast(e.message, 'err'); }
       finally { btn.disabled = false; btn.textContent = old; }
     };
+
     $('#exportCSV').onclick = async () => {
       try {
         const r = await fetch(API + '/api/admin/orders.csv', { headers: { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) } });
+        if (!r.ok) throw new Error('خطا در دانلود');
         const b = await r.blob();
         const a = document.createElement('a');
         a.href = URL.createObjectURL(b);
         a.download = `gshop-orders-${Date.now()}.csv`;
         a.click();
+        URL.revokeObjectURL(a.href);
         toast('CSV دانلود شد ✓');
       } catch (e) { toast(e.message, 'err'); }
     };
+
     $('#clearCache').onclick = () => {
-      localStorage.removeItem(SETTINGS_CACHE);
-      localStorage.removeItem(CONTENT_CACHE);
+      localStorage.removeItem(SETTINGS_CACHE_KEY);
+      localStorage.removeItem(CONTENT_CACHE_KEY);
       toast('کش پاک شد. صفحه رو رفرش کن ✓');
     };
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Products Admin ---------- */
 async function loadProductsAdmin() {
   const el = $('#panel-products');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const res = await api('/api/products');
@@ -184,45 +243,52 @@ async function loadProductsAdmin() {
           <option value="instock">موجود</option>
           <option value="outstock">ناموجود</option>
         </select>
-        <button class="chip" id="prodAddBtn">➕ محصول جدید</button>
+        <button type="button" class="chip" id="prodAddBtn">➕ محصول جدید</button>
       </div>
       <div id="prodList"></div>
     `;
 
     const render = (search = '', status = '') => {
       let list = [...products];
-      if (search) { const q = search.toLowerCase(); list = list.filter(p => p.name.toLowerCase().includes(q) || String(p.id).includes(q)); }
-      if (status === 'active') list = list.filter(p => p.active);
+      const q = search.toLowerCase();
+      if (q) list = list.filter(p => p.name?.toLowerCase().includes(q) || String(p.id).includes(q));
+      if (status === 'active')   list = list.filter(p => p.active);
       if (status === 'inactive') list = list.filter(p => !p.active);
-      if (status === 'instock') list = list.filter(p => totalStock(p) > 0);
+      if (status === 'instock')  list = list.filter(p => totalStock(p) > 0);
       if (status === 'outstock') list = list.filter(p => totalStock(p) === 0);
+
       const container = $('#prodList');
       if (!container) return;
       if (!list.length) { container.innerHTML = '<p style="color:var(--dim)">محصولی یافت نشد.</p>'; return; }
+
       container.innerHTML = list.map(p => {
         const stock = totalStock(p);
-        const colors = [...new Set(p.variants.map(v => v.color))];
-        const sizes = [...new Set(p.variants.map(v => v.size))];
+        const variants = variantsOf(p);
+        const colors = [...new Set(variants.map(v => v.color))];
+        const sizes = [...new Set(variants.map(v => v.size))];
+        const isActive = Boolean(p.active);
         return `
           <div class="prod-admin" style="display:grid;grid-template-columns:100px 1fr;gap:16px;align-items:start">
             <div style="aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3)"><img src="${esc(p.image)}" style="width:100%;height:100%;object-fit:cover" alt=""></div>
             <div>
               <div class="prod-admin__head" style="margin-bottom:10px">
-                <div><strong>${esc(p.name)}</strong><span style="color:var(--dim);font-size:12px;margin-inline-start:8px">#${p.id}</span>
-                  ${p.active ? '' : '<span class="pill cancelled" style="margin-inline-start:8px">غیرفعال</span>'}
+                <div>
+                  <strong>${esc(p.name)}</strong>
+                  <span style="color:var(--dim);font-size:12px;margin-inline-start:8px">#${p.id}</span>
+                  ${isActive ? '' : '<span class="pill cancelled" style="margin-inline-start:8px">غیرفعال</span>'}
                   ${p.tag ? `<span class="pill pending" style="margin-inline-start:8px">${esc(p.tag)}</span>` : ''}
                 </div>
                 <span class="price">${fmt(p.price)}</span>
               </div>
               <div style="font-size:12.5px;color:var(--dim);line-height:1.8;margin-bottom:12px">
                 <div>📦 موجودی کل: <b style="color:${stock === 0 ? 'var(--red)' : stock <= 3 ? 'var(--gold)' : 'var(--green)'}">${fmtNum(stock)}</b> عدد</div>
-                <div>🎨 رنگ‌ها: ${colors.length ? colors.map(c => esc(c)).join(' · ') : '—'}</div>
-                <div>📏 سایزها: ${sizes.length ? sizes.map(s => esc(s)).join(' · ') : '—'}</div>
+                <div>🎨 رنگ‌ها: ${colors.length ? colors.map(esc).join(' · ') : '—'}</div>
+                <div>📏 سایزها: ${sizes.length ? sizes.map(esc).join(' · ') : '—'}</div>
                 ${p.category ? `<div>📂 دسته: ${esc(p.category)}</div>` : ''}
               </div>
               <div class="prod-admin__head actions" style="margin:0;justify-content:flex-start;gap:8px;flex-wrap:wrap">
                 <button type="button" data-edit="${p.id}">✏️ ویرایش</button>
-                <button type="button" data-toggle-active="${p.id}" data-active="${p.active}">${p.active ? '🚫 غیرفعال' : '✅ فعال'}</button>
+                <button type="button" data-toggle-active="${p.id}" data-active="${isActive ? 1 : 0}">${isActive ? '🚫 غیرفعال' : '✅ فعال'}</button>
                 <button type="button" data-gallery="${p.id}">🖼 گالری</button>
                 <button type="button" class="danger" data-del="${p.id}">🗑 حذف</button>
               </div>
@@ -232,16 +298,12 @@ async function loadProductsAdmin() {
       }).join('');
 
       container.querySelectorAll('[data-edit]').forEach(b => {
-        b.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const pid = Number(b.dataset.edit);
-          if (pid) openEditProduct(pid);
-        };
+        b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openEditProduct(Number(b.dataset.edit)); };
       });
       container.querySelectorAll('[data-toggle-active]').forEach(b => {
         b.onclick = async () => {
-          const active = b.dataset.active === '1' ? 0 : 1;
+          const isActive = b.dataset.active === '1';
+          const active = isActive ? 0 : 1;
           try {
             await api('/api/admin/products/' + b.dataset.toggleActive, { method: 'PATCH', body: JSON.stringify({ active }) });
             toast(active ? 'فعال شد ✓' : 'غیرفعال شد');
@@ -264,29 +326,32 @@ async function loadProductsAdmin() {
         b.onclick = (e) => { e.preventDefault(); openGalleryManager(Number(b.dataset.gallery)); };
       });
     };
+
     render();
     const debouncedRender = debounce((v, s) => render(v, s), 250);
-    $('#prodSearch').oninput = (e) => debouncedRender(e.target.value, $('#prodStatusFilter').value);
-    $('#prodStatusFilter').onchange = (e) => render($('#prodSearch').value, e.target.value);
+    $('#prodSearch').oninput = e => debouncedRender(e.target.value, $('#prodStatusFilter').value);
+    $('#prodStatusFilter').onchange = e => render($('#prodSearch').value, e.target.value);
     $('#prodAddBtn').onclick = () => document.querySelector('.tab[data-tab="newproduct"]')?.click();
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Edit Product ---------- */
 function openEditProduct(pid) {
   const p = state.products.find(x => Number(x.id) === Number(pid));
   if (!p) { toast('محصول پیدا نشد. صفحه رو رفرش کن.', 'err'); return; }
   const modal = $('#modal');
   const box = $('#modalBox');
-  if (!modal || !box) { toast('خطا در باز کردن پنجره', 'err'); return; }
+  if (!modal || !box) return;
+
   box.classList.add('modal__box--wide');
   box.innerHTML = `
     <div style="padding:32px" id="editProdContainer">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <h2 style="margin:0">ویرایش محصول #${p.id}</h2>
-        <button type="button" class="close-x" id="epClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button type="button" class="close-x" id="epClose" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="np-grid">
         <div class="np-field"><label>نام محصول *</label><input type="text" id="epName" value="${esc(p.name)}"></div>
@@ -319,16 +384,17 @@ function openEditProduct(pid) {
       </div>
     </div>
   `;
-  let images = [p.image, ...((p.gallery || []).map(g => g.url))].filter(Boolean);
+
+  let images = [p.image, ...galleryOf(p).map(g => g.url)].filter(Boolean);
   if (!images.length) images = [''];
-  let variants = (p.variants || []).map(v => ({ color: v.color, size: v.size, stock: v.stock }));
+  let variants = variantsOf(p).map(v => ({ color: v.color, size: v.size, stock: Number(v.stock) || 0 }));
 
   function renderImages() {
     const wrap = $('#epImagesGrid');
     if (!wrap) return;
     wrap.innerHTML = images.map((url, i) => `
       <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-ep-img="${i}">
-        ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">📸 عکس ${i + 1}<br>(کلیک کن)</div>`}
+        ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover" alt="">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">📸 عکس ${nf(i + 1)}<br>(کلیک کن)</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
         ${url ? `<button type="button" class="del-btn" data-ep-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
@@ -395,7 +461,7 @@ function openEditProduct(pid) {
       };
     });
     wrap.querySelectorAll('[data-vdel]').forEach(b => {
-      b.onclick = () => { variants.splice(Number(b.dataset.vdel), 1); renderVariants(); };
+      b.onclick = () => { variants.splice(Number(b.dataset.vdel), 1); if (!variants.length) variants.push({ color: '', size: '', stock: 0 }); renderVariants(); };
     });
   }
   renderVariants();
@@ -410,6 +476,7 @@ function openEditProduct(pid) {
     const err = $('#epErr');
     err.classList.remove('on');
     const showErr = (msg) => { err.textContent = msg; err.classList.add('on'); };
+
     const name = $('#epName').value.trim();
     const price = Number($('#epPrice').value);
     const compare_price = Number($('#epCompare').value) || null;
@@ -418,32 +485,46 @@ function openEditProduct(pid) {
     const sort_order = Number($('#epSort').value) || 0;
     const description = $('#epDesc').value.trim();
     const cleanImages = images.map(u => String(u).trim()).filter(Boolean);
+
     if (!name) return showErr('نام الزامی است');
     if (!price || price <= 0) return showErr('قیمت معتبر نیست');
     if (!cleanImages.length) return showErr('حداقل یک عکس لازم است');
 
-    const cleanVariants = variants.map(v => ({ color: String(v.color).trim(), size: String(v.size).trim(), stock: Math.max(0, Number(v.stock) || 0) })).filter(v => v.color && v.size);
+    const cleanVariants = variants.map(v => ({
+      color: String(v.color).trim(),
+      size: String(v.size).trim(),
+      stock: Math.max(0, Number(v.stock) || 0),
+    })).filter(v => v.color && v.size);
 
-    const btn = $('#epSave'); btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+    const btn = $('#epSave');
+    btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+
     try {
       await api('/api/admin/products/' + p.id, {
         method: 'PATCH',
-        body: JSON.stringify({ name, price, compare_price, category, tag, sort_order, description, image: cleanImages[0] }),
+        body: JSON.stringify({
+          name, price, compare_price, category, tag, sort_order, description,
+          image: cleanImages[0],
+          variants: cleanVariants,
+        }),
       });
-      const oldGallery = p.gallery || [];
+
+      // Gallery diff (فقط تفاوت‌ها)
+      const oldGallery = galleryOf(p);
+      const oldUrls = new Set(oldGallery.map(g => g.url));
+      const newUrls = new Set(cleanImages.slice(1));
+
       for (const g of oldGallery) {
-        await api('/api/admin/gallery/' + g.id, { method: 'DELETE' }).catch(() => {});
-      }
-      for (let gi = 1; gi < cleanImages.length; gi++) {
-        await api(`/api/admin/products/${p.id}/gallery`, { method: 'POST', body: JSON.stringify({ url: cleanImages[gi] }) });
-      }
-      for (const v of cleanVariants) {
-        const old = p.variants.find(ov => ov.color === v.color && ov.size === v.size);
-        if (old) {
-          const delta = v.stock - old.stock;
-          if (delta !== 0) await api('/api/admin/stock', { method: 'PATCH', body: JSON.stringify({ productId: p.id, color: v.color, size: v.size, delta }) });
+        if (!newUrls.has(g.url)) {
+          await api('/api/admin/gallery/' + g.id, { method: 'DELETE' }).catch(() => {});
         }
       }
+      for (let gi = 1; gi < cleanImages.length; gi++) {
+        if (!oldUrls.has(cleanImages[gi])) {
+          await api(`/api/admin/products/${p.id}/gallery`, { method: 'POST', body: JSON.stringify({ url: cleanImages[gi] }) });
+        }
+      }
+
       toast('محصول به‌روز شد ✓');
       await loadProducts();
       await loadProductsAdmin();
@@ -451,24 +532,37 @@ function openEditProduct(pid) {
     } catch (e) { showErr(e.message); }
     finally { btn.disabled = false; btn.textContent = '✓ ذخیره تغییرات'; }
   };
+
   modal.classList.add('on');
   state.modalOpen = true;
   updateScrollLock();
 }
 
+/* ---------- Gallery Manager ---------- */
 async function openGalleryManager(pid) {
   const p = state.products.find(x => Number(x.id) === Number(pid));
   if (!p) { toast('محصول پیدا نشد', 'err'); return; }
   const modal = $('#modal');
   const box = $('#modalBox');
+  if (!modal || !box) return;
   box.classList.add('modal__box--wide');
-  let gallery = [...(p.gallery || [])];
+
+  let gallery = [...galleryOf(p)];
+
+  const refresh = async () => {
+    try {
+      const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
+      gallery = galleryOf(fresh);
+      await loadProducts();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
   function render() {
     box.innerHTML = `
       <div style="padding:32px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
           <h2 style="margin:0">گالری: ${esc(p.name)}</h2>
-          <button type="button" class="close-x" id="gmClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button type="button" class="close-x" id="gmClose" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
           <input type="file" id="gmFile" accept="image/*" style="display:none">
@@ -476,11 +570,14 @@ async function openGalleryManager(pid) {
           <button type="button" class="chip" id="gmUrl">🔗 افزودن با URL</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px" id="gmGrid">
-          ${gallery.length ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button type="button" class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('') : '<p style="color:var(--dim);grid-column:1/-1">هنوز عکسی تو گالری نیست.</p>'}
+          ${gallery.length
+            ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button type="button" class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('')
+            : '<p style="color:var(--dim);grid-column:1/-1">هنوز عکسی تو گالری نیست.</p>'}
         </div>
       </div>
     `;
     $('#gmClose').onclick = () => { modal.classList.remove('on'); box.classList.remove('modal__box--wide'); state.modalOpen = false; updateScrollLock(); };
+
     const fileInput = $('#gmFile');
     $('#gmUpload').onclick = () => fileInput.click();
     fileInput.onchange = async (e) => {
@@ -495,10 +592,8 @@ async function openGalleryManager(pid) {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'خطا');
         await api(`/api/admin/products/${pid}/gallery`, { method: 'POST', body: JSON.stringify({ url: data.url }) });
-        const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
-        gallery = fresh?.gallery || [];
+        await refresh();
         toast('عکس اضافه شد ✓');
-        await loadProducts();
         render();
       } catch (err) { toast(err.message, 'err'); }
     };
@@ -507,10 +602,8 @@ async function openGalleryManager(pid) {
       if (!url) return;
       try {
         await api(`/api/admin/products/${pid}/gallery`, { method: 'POST', body: JSON.stringify({ url }) });
-        const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
-        gallery = fresh?.gallery || [];
+        await refresh();
         toast('عکس اضافه شد ✓');
-        await loadProducts();
         render();
       } catch (err) { toast(err.message, 'err'); }
     };
@@ -519,10 +612,8 @@ async function openGalleryManager(pid) {
         if (!await confirmDialog('حذف عکس', 'این عکس از گالری حذف شود؟')) return;
         try {
           await api('/api/admin/gallery/' + b.dataset.gdel, { method: 'DELETE' });
-          const fresh = (await api('/api/products')).products.find(x => Number(x.id) === Number(pid));
-          gallery = fresh?.gallery || [];
+          await refresh();
           toast('حذف شد');
-          await loadProducts();
           render();
         } catch (err) { toast(err.message, 'err'); }
       };
@@ -534,8 +625,10 @@ async function openGalleryManager(pid) {
   updateScrollLock();
 }
 
+/* ---------- Add Product ---------- */
 async function loadAddProduct() {
   const el = $('#panel-newproduct');
+  if (!el) return;
   el.innerHTML = `
     <div style="max-width:900px;margin:0 auto"><div class="prod-admin" style="padding:28px">
       <h3 style="font-size:20px;font-weight:700;margin-bottom:6px">افزودن محصول جدید</h3>
@@ -572,18 +665,21 @@ async function loadAddProduct() {
       </div>
     </div></div>
   `;
+
   let images = [''];
   let variants = [{ color: 'مشکی', size: 'M', stock: 5 }];
 
   function renderImages() {
     const wrap = $('#npImagesGrid');
+    if (!wrap) return;
     wrap.innerHTML = images.map((url, i) => `
       <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-img-slot="${i}">
-        ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">${i === 0 ? '📸 عکس اصلی<br>(کلیک کن)' : `📸 عکس ${i + 1}<br>(کلیک کن)`}</div>`}
+        ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover" alt="">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">${i === 0 ? '📸 عکس اصلی<br>(کلیک کن)' : `📸 عکس ${nf(i + 1)}<br>(کلیک کن)`}</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
         ${url ? `<button type="button" class="del-btn" data-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
     `).join('') + (images.length < 5 ? `<div style="aspect-ratio:4/5;border-radius:12px;background:var(--ink);border:1px dashed var(--line-2);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-img-add><div style="text-align:center;font-size:11px"><div style="font-size:24px;margin-bottom:4px;opacity:.5">+</div>افزودن عکس</div></div>` : '');
+
     wrap.querySelectorAll('[data-img-slot]').forEach(slot => {
       const i = Number(slot.dataset.imgSlot);
       slot.onclick = (e) => {
@@ -625,6 +721,7 @@ async function loadAddProduct() {
 
   function renderVariants() {
     const wrap = $('#npVariants');
+    if (!wrap) return;
     wrap.innerHTML = variants.map((v, i) => `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center">
         <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
@@ -650,7 +747,8 @@ async function loadAddProduct() {
   $('#npSubmit').onclick = async () => {
     const err = $('#npErr');
     err.classList.remove('on');
-    const showErr = (msg) => { err.textContent = msg; err.classList.add('on'); err.scrollIntoView({behavior:'smooth',block:'center'}); };
+    const showErr = (msg) => { err.textContent = msg; err.classList.add('on'); err.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+
     const name = $('#npName').value.trim();
     const price = Number($('#npPrice').value);
     const compare_price = Number($('#npComparePrice').value) || null;
@@ -659,17 +757,29 @@ async function loadAddProduct() {
     const sort_order = Number($('#npSort').value) || 10;
     const description = $('#npDesc').value.trim();
     const cleanImages = images.map(u => String(u).trim()).filter(Boolean);
+
     if (!name) return showErr('نام محصول الزامی است');
     if (!price || price <= 0) return showErr('قیمت را وارد کنید');
     if (!cleanImages.length) return showErr('حداقل یک عکس محصول آپلود کنید');
-    const cleanVariants = variants.map(v => ({ color: String(v.color).trim(), size: String(v.size).trim(), stock: Math.max(0, Number(v.stock) || 0) })).filter(v => v.color && v.size);
+
+    const cleanVariants = variants.map(v => ({
+      color: String(v.color).trim(),
+      size: String(v.size).trim(),
+      stock: Math.max(0, Number(v.stock) || 0),
+    })).filter(v => v.color && v.size);
     if (!cleanVariants.length) return showErr('حداقل یه رنگ و سایز با موجودی لازم است');
-    const btn = $('#npSubmit'); btn.disabled = true;
+
+    const btn = $('#npSubmit');
+    btn.disabled = true;
     const old = btn.textContent; btn.textContent = '⏳ در حال ثبت...';
+
     try {
       await api('/api/admin/products', {
         method: 'POST',
-        body: JSON.stringify({ name, price, compare_price, category, tag, sort_order, description, image: cleanImages[0], images: cleanImages, variants: cleanVariants }),
+        body: JSON.stringify({
+          name, price, compare_price, category, tag, sort_order, description,
+          image: cleanImages[0], images: cleanImages, variants: cleanVariants,
+        }),
       });
       toast('محصول با موفقیت اضافه شد ✓');
       await loadProducts();
@@ -679,24 +789,35 @@ async function loadAddProduct() {
   };
 }
 
+/* ---------- Stock ---------- */
 async function loadStock() {
   const el = $('#panel-stock');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const { products } = await api('/api/products');
     state.products = products;
     el.innerHTML = `<div class="filter-bar"><input type="text" id="stockSearch" placeholder="🔍 جستجوی محصول..."></div><div id="stockList"></div>`;
+
     const render = (search = '') => {
       let list = products;
-      if (search) { const q = search.toLowerCase(); list = products.filter(p => p.name.toLowerCase().includes(q)); }
+      const q = search.toLowerCase();
+      if (q) list = products.filter(p => p.name?.toLowerCase().includes(q));
+
       const container = $('#stockList');
+      if (!container) return;
       if (!list.length) { container.innerHTML = '<p style="color:var(--dim)">محصولی یافت نشد.</p>'; return; }
+
       container.innerHTML = list.map(p => {
-        const rows = p.variants.map(v => {
+        const rows = variantsOf(p).map(v => {
           const cls = v.stock === 0 ? 'out' : (v.stock <= 3 ? 'low' : '');
-          const colorCls = COLOR_MAP[v.color] || 'black';
+          const colorCls = COLOR_MAP?.[v.color] || 'black';
           return `<div class="vrow ${cls}">
-            <div class="vrow__label"><span class="dot dot--${colorCls}"></span><b>${esc(v.color)}</b><span style="color:var(--dim)">·</span><b>${esc(v.size)}</b><small>(${fmtNum(v.stock)} عدد)</small></div>
+            <div class="vrow__label">
+              <span class="dot dot--${colorCls}"></span>
+              <b>${esc(v.color)}</b><span style="color:var(--dim)">·</span><b>${esc(v.size)}</b>
+              <small>(${fmtNum(v.stock)} عدد)</small>
+            </div>
             <input type="number" min="1" value="1" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">
             <div class="vrow__btns">
               <button type="button" class="plus" data-act="inc" data-pid="${p.id}" data-color="${esc(v.color)}" data-size="${esc(v.size)}">+</button>
@@ -706,10 +827,12 @@ async function loadStock() {
         }).join('');
         return `<div class="prod-admin"><div class="prod-admin__head"><strong>${esc(p.name)}</strong><span class="price">${fmt(p.price)}</span></div>${rows}</div>`;
       }).join('');
+
       container.querySelectorAll('.vrow__btns button').forEach(b => {
         b.onclick = async () => {
           const pid = Number(b.dataset.pid);
           const input = container.querySelector(`input[data-pid="${pid}"][data-color="${b.dataset.color}"][data-size="${b.dataset.size}"]`);
+          if (!input) return;
           const val = Math.max(1, parseInt(input.value) || 1);
           const delta = b.dataset.act === 'inc' ? val : -val;
           try {
@@ -725,71 +848,88 @@ async function loadStock() {
     const debouncedRender = debounce((v) => render(v), 250);
     $('#stockSearch').oninput = (e) => debouncedRender(e.target.value);
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Orders ---------- */
 async function loadOrders() {
   const el = $('#panel-orders');
+  if (!el) return;
   el.innerHTML = `
     <div class="filter-bar">
       <input type="text" id="ordSearch" placeholder="🔍 جستجو (شماره، نام، موبایل)">
       <select id="ordStatus">
-        <option value="">همه وضعیت‌ها</option><option value="pending">در انتظار</option><option value="confirmed">تایید شده</option>
-        <option value="shipped">ارسال شده</option><option value="delivered">تحویل شده</option><option value="cancelled">لغو شده</option>
+        <option value="">همه وضعیت‌ها</option>
+        <option value="pending">در انتظار</option><option value="confirmed">تایید شده</option>
+        <option value="shipped">ارسال شده</option><option value="delivered">تحویل شده</option>
+        <option value="cancelled">لغو شده</option>
       </select>
       <button type="button" class="chip" id="ordExport">📥 CSV</button>
     </div>
     <div id="ordList"></div>
   `;
+
   const fetchOrders = async () => {
     const q = $('#ordSearch').value;
     const status = $('#ordStatus').value;
-    const url = `/api/admin/orders?q=${encodeURIComponent(q)}&status=${status}`;
     const list = $('#ordList');
     list.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
     try {
-      const { orders } = await api(url);
-      state.adminOrders = orders;
-      if (!orders.length) { list.innerHTML = '<p style="color:var(--dim)">سفارشی یافت نشد.</p>'; return; }
-      renderOrdersList(list, orders);
+      const { orders } = await api(`/api/admin/orders?q=${encodeURIComponent(q)}&status=${status}`);
+      state.adminOrders = Array.isArray(orders) ? orders : [];
+      if (!state.adminOrders.length) { list.innerHTML = '<p style="color:var(--dim)">سفارشی یافت نشد.</p>'; return; }
+      renderOrdersList(list, state.adminOrders);
     } catch (e) {
-      if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+      if (e.status === 401) adminLogout();
       else list.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
     }
   };
+
   const debouncedFetch = debounce(fetchOrders, 300);
   $('#ordSearch').oninput = debouncedFetch;
   $('#ordStatus').onchange = fetchOrders;
   $('#ordExport').onclick = async () => {
     try {
       const r = await fetch(API + '/api/admin/orders.csv', { headers: { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) } });
+      if (!r.ok) throw new Error('خطا');
       const b = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(b);
       a.download = `gshop-orders-${Date.now()}.csv`;
       a.click();
+      URL.revokeObjectURL(a.href);
       toast('CSV دانلود شد ✓');
     } catch (e) { toast(e.message, 'err'); }
   };
+
   await fetchOrders();
 }
 
 function renderOrdersList(el, orders) {
-  const statuses = [
+  const STATUSES = [
     { v:'pending', l:'در انتظار', c:'pending' },
     { v:'confirmed', l:'تایید شده', c:'confirmed' },
     { v:'shipped', l:'ارسال شده', c:'shipped' },
     { v:'delivered', l:'تحویل شده', c:'delivered' },
     { v:'cancelled', l:'لغو شده', c:'cancelled' },
   ];
+
   el.innerHTML = orders.map(o => {
-    const st = statuses.find(s => s.v === o.status) || statuses[0];
-    const date = new Date(o.created_at).toLocaleString('fa-IR');
-    const phoneDigits = String(o.phone).replace(/\D/g,'');
-    const tgLink = `https://t.me/+98${phoneDigits.replace(/^0/,'')}`;
-    const payBadge = o.payment && o.payment.status === 'verified' ? `<span class="pill delivered" style="margin-inline-start:6px">💳 پرداخت شده</span>` : (o.payment && o.payment.status === 'pending' ? `<span class="pill pending" style="margin-inline-start:6px">⏳ پرداخت</span>` : '');
+    const st = STATUSES.find(s => s.v === o.status) || STATUSES[0];
+    const d = new Date(o.created_at);
+    const date = isNaN(d) ? '—' : d.toLocaleString('fa-IR');
+
+    const phoneDigits = String(o.phone || '').replace(/\D/g, '');
+    const tgLink = phoneDigits ? `https://t.me/+98${phoneDigits.replace(/^0/, '')}` : '#';
+
+    const payBadge = o.payment?.status === 'verified'
+      ? `<span class="pill delivered" style="margin-inline-start:6px">💳 پرداخت شده</span>`
+      : (o.payment?.status === 'pending'
+          ? `<span class="pill pending" style="margin-inline-start:6px">⏳ پرداخت</span>`
+          : '');
+
     return `<div class="ocard">
       <div class="ocard__head">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -804,15 +944,15 @@ function renderOrdersList(el, orders) {
         ${o.address ? `<br><span style="color:var(--dim);font-size:12px">📍 ${esc(o.address)}</span>` : ''}
         ${o.note ? `<br><span style="color:var(--gold);font-size:12px">📝 ${esc(o.note)}</span>` : ''}
         ${o.tracking_no ? `<br><span style="color:var(--lime);font-size:12px">📦 کد رهگیری: <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
-        ${o.payment && o.payment.ref_number ? `<br><span style="color:var(--green);font-size:12px">💳 شماره پیگیری: <b class="mono">${esc(o.payment.ref_number)}</b></span>` : ''}
+        ${o.payment?.ref_number ? `<br><span style="color:var(--green);font-size:12px">💳 شماره پیگیری: <b class="mono">${esc(o.payment.ref_number)}</b></span>` : ''}
       </div>
-      <div class="ocard__items">${o.items.map(i => `• <b>${esc(i.name)}</b> — ${esc(i.color)} · ${esc(i.size)} · ×${fmtNum(i.qty)} = ${fmt(i.price * i.qty)}`).join('<br>')}</div>
+      <div class="ocard__items">${(o.items || []).map(i => `• <b>${esc(i.name)}</b> — ${esc(i.color)} · ${esc(i.size)} · ×${fmtNum(i.qty)} = ${fmt(i.price * i.qty)}`).join('<br>')}</div>
       ${o.notes?.length ? `<div class="ocard__notes"><div style="color:var(--dim);font-size:11px;margin-bottom:6px;letter-spacing:.05em">یادداشت‌ها</div>${o.notes.map(n => `<div class="nt">${esc(n.note)} <span style="color:var(--faint);font-size:10px">— ${esc(n.created_at)}</span></div>`).join('')}</div>` : ''}
       <div class="ocard__foot">
         <div class="ocard__total">مجموع: <span>${fmt(o.total)}</span>${o.discount > 0 ? `<span style="color:var(--dim);font-size:12px;margin-right:10px">(تخفیف ${fmt(o.discount)})</span>` : ''}</div>
         <div class="ocard__actions">
           <a class="nt-btn" href="${tgLink}" target="_blank" rel="noopener" style="text-decoration:none">✈️ تلگرام</a>
-          <select class="status-sel" data-no="${esc(o.order_no)}">${statuses.map(s => `<option value="${s.v}" ${s.v === o.status ? 'selected' : ''}>${s.l}</option>`).join('')}</select>
+          <select class="status-sel" data-no="${esc(o.order_no)}">${STATUSES.map(s => `<option value="${s.v}" ${s.v === o.status ? 'selected' : ''}>${s.l}</option>`).join('')}</select>
           <button type="button" class="nt-btn" data-tracking="${esc(o.order_no)}">📦 رهگیری</button>
           <button type="button" class="nt-btn" data-note="${esc(o.order_no)}">📝 یادداشت</button>
           <button type="button" class="del-btn" data-del="${esc(o.order_no)}">🗑 حذف</button>
@@ -820,6 +960,7 @@ function renderOrdersList(el, orders) {
       </div>
     </div>`;
   }).join('');
+
   el.querySelectorAll('.status-sel').forEach(sel => {
     sel.onchange = async () => {
       try {
@@ -843,14 +984,14 @@ function renderOrdersList(el, orders) {
   el.querySelectorAll('[data-tracking]').forEach(b => b.onclick = () => showTrackingModal(b.dataset.tracking, loadOrders));
 }
 
+/* ---------- Order Note Modal ---------- */
 function showNoteModal(orderNo, onDone) {
   const modal = $('#modal');
   const box = $('#modalBox');
+  if (!modal || !box) return;
   box.classList.remove('modal__box--wide');
   box.innerHTML = `
-    <button type="button" class="close-x" id="ntmClose" style="position:absolute;top:16px;left:16px">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
+    <button type="button" class="close-x" id="ntmClose" style="position:absolute;top:16px;left:16px" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     <h2>یادداشت سفارش</h2><p class="sub">${esc(orderNo)}</p>
     <div class="field"><textarea id="ntText" placeholder="مثلاً: با مشتری تماس گرفتم، ارسال فردا"></textarea></div>
     <div class="err" id="ntErr"></div>
@@ -874,15 +1015,15 @@ function showNoteModal(orderNo, onDone) {
   updateScrollLock();
 }
 
+/* ---------- Tracking Modal ---------- */
 function showTrackingModal(orderNo, onDone) {
   const modal = $('#modal');
   const box = $('#modalBox');
+  if (!modal || !box) return;
   box.classList.remove('modal__box--wide');
   const order = state.adminOrders.find(o => o.order_no === orderNo);
   box.innerHTML = `
-    <button type="button" class="close-x" id="trmClose" style="position:absolute;top:16px;left:16px">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
+    <button type="button" class="close-x" id="trmClose" style="position:absolute;top:16px;left:16px" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     <h2>کد رهگیری پستی</h2><p class="sub">${esc(orderNo)}</p>
     <div class="field"><label>کد رهگیری</label><input type="text" id="trmCode" value="${esc(order?.tracking_no || '')}" placeholder="مثلاً 12345678901234567890" class="mono"></div>
     <div class="err" id="trmErr"></div>
@@ -905,8 +1046,10 @@ function showTrackingModal(orderNo, onDone) {
   updateScrollLock();
 }
 
+/* ---------- Coupons ---------- */
 async function loadCoupons() {
   const el = $('#panel-coupons');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const { coupons } = await api('/api/admin/coupons');
@@ -924,24 +1067,28 @@ async function loadCoupons() {
         <button type="button" class="checkout-btn" id="ncAdd" style="padding:12px 24px;font-size:13px;width:auto">افزودن کد</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
-        ${coupons.map(c => `<div class="prod-admin" style="padding:18px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <span class="mono" style="font-size:18px;font-weight:700;color:var(--lime)">${esc(c.code)}</span>
-            <span class="pill ${c.active ? 'delivered' : 'cancelled'}">${c.active ? 'فعال' : 'غیرفعال'}</span>
-          </div>
-          <div style="font-size:13px;color:var(--dim);margin-bottom:6px">${esc(c.label || '')}</div>
-          <div style="font-size:12.5px;color:var(--dim);line-height:1.8">
-            مقدار: <b style="color:var(--text)">${c.type === 'percent' ? nf(c.value) + '٪' : fmt(c.value)}</b><br>
-            استفاده: <b style="color:var(--text)">${nf(c.uses)}${c.max_uses ? ' / ' + nf(c.max_uses) : ''}</b>
-            ${c.min_total > 0 ? `<br>حداقل خرید: <b style="color:var(--text)">${fmt(c.min_total)}</b>` : ''}
-          </div>
-          <div style="display:flex;gap:8px;margin-top:12px">
-            <button type="button" class="nt-btn" data-toggle-coupon="${esc(c.code)}" data-active="${c.active}" style="flex:1">${c.active ? 'غیرفعال' : 'فعال'}</button>
-            <button type="button" class="del-btn" data-del-coupon="${esc(c.code)}">🗑</button>
-          </div>
-        </div>`).join('')}
+        ${coupons.map(c => {
+          const isActive = Boolean(c.active);
+          return `<div class="prod-admin" style="padding:18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span class="mono" style="font-size:18px;font-weight:700;color:var(--lime)">${esc(c.code)}</span>
+              <span class="pill ${isActive ? 'delivered' : 'cancelled'}">${isActive ? 'فعال' : 'غیرفعال'}</span>
+            </div>
+            <div style="font-size:13px;color:var(--dim);margin-bottom:6px">${esc(c.label || '')}</div>
+            <div style="font-size:12.5px;color:var(--dim);line-height:1.8">
+              مقدار: <b style="color:var(--text)">${c.type === 'percent' ? nf(c.value) + '٪' : fmt(c.value)}</b><br>
+              استفاده: <b style="color:var(--text)">${nf(c.uses)}${c.max_uses ? ' / ' + nf(c.max_uses) : ''}</b>
+              ${c.min_total > 0 ? `<br>حداقل خرید: <b style="color:var(--text)">${fmt(c.min_total)}</b>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button type="button" class="nt-btn" data-toggle-coupon="${esc(c.code)}" data-active="${isActive ? 1 : 0}" style="flex:1">${isActive ? 'غیرفعال' : 'فعال'}</button>
+              <button type="button" class="del-btn" data-del-coupon="${esc(c.code)}">🗑</button>
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     `;
+
     $('#ncAdd').onclick = async () => {
       const code = $('#ncCode').value.trim().toUpperCase();
       const type = $('#ncType').value;
@@ -949,7 +1096,7 @@ async function loadCoupons() {
       const max_uses = $('#ncMax').value ? parseInt($('#ncMax').value) : null;
       const min_total = $('#ncMin').value ? parseInt($('#ncMin').value) : 0;
       const label = $('#ncLabel').value.trim();
-      if (!code || !value) return toast('کد و مقدار الزامی', 'err');
+      if (!code || !value) { toast('کد و مقدار الزامی', 'err'); return; }
       try {
         await api('/api/admin/coupons', { method: 'POST', body: JSON.stringify({ code, type, value, max_uses, min_total, label }) });
         toast('کد اضافه شد ✓');
@@ -958,7 +1105,8 @@ async function loadCoupons() {
     };
     el.querySelectorAll('[data-toggle-coupon]').forEach(b => {
       b.onclick = async () => {
-        const active = b.dataset.active === '1' ? 0 : 1;
+        const isActive = b.dataset.active === '1';
+        const active = isActive ? 0 : 1;
         try {
           await api('/api/admin/coupons/' + b.dataset.toggleCoupon, { method: 'PATCH', body: JSON.stringify({ active }) });
           loadCoupons();
@@ -976,13 +1124,15 @@ async function loadCoupons() {
       };
     });
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Reviews ---------- */
 async function loadReviews() {
   const el = $('#panel-reviews');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const { reviews } = await api('/api/admin/reviews');
@@ -991,7 +1141,7 @@ async function loadReviews() {
       <div class="ocard">
         <div class="ocard__head">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <span style="color:var(--gold);font-size:16px">${'★'.repeat(r.rating)}<span style="color:var(--faint)">${'★'.repeat(5-r.rating)}</span></span>
+            <span style="color:var(--gold);font-size:16px">${'★'.repeat(r.rating)}<span style="color:var(--faint)">${'★'.repeat(5 - r.rating)}</span></span>
             <span class="pill ${r.approved ? 'delivered' : 'pending'}">${r.approved ? 'تایید شده' : 'در انتظار'}</span>
           </div>
           <span class="ocard__date">${esc(r.created_at)}</span>
@@ -1004,6 +1154,7 @@ async function loadReviews() {
         </div>
       </div>
     `).join('');
+
     el.querySelectorAll('[data-approve]').forEach(b => {
       b.onclick = async () => {
         try {
@@ -1024,22 +1175,25 @@ async function loadReviews() {
       };
     });
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Content Panel ---------- */
 async function loadContentPanel() {
   const el = $('#panel-content');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const r = await api('/api/admin/content');
     const content = r.content || {};
+
     const imgField = (key, label) => `
       <div class="np-field" style="margin-bottom:14px"><label>${esc(label)}</label>
         <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
           <div style="width:100px;aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line);flex-shrink:0">
-            <img id="cv-img-${key}" src="${esc(content[key] || 'https://via.placeholder.com/200x250/1c1c1c/444?text=بدون+عکس')}" style="width:100%;height:100%;object-fit:cover">
+            <img id="cv-img-${key}" src="${esc(content[key] || 'https://via.placeholder.com/200x250/1c1c1c/444?text=بدون+عکس')}" style="width:100%;height:100%;object-fit:cover" alt="">
           </div>
           <div style="flex:1;min-width:200px">
             <input type="file" id="cv-file-${key}" accept="image/*" style="display:none">
@@ -1054,6 +1208,7 @@ async function loadContentPanel() {
         <input type="text" id="cv-txt-${key}" value="${esc(content[key] || '')}" placeholder="${esc(placeholder)}" style="width:100%;padding:10px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
       </div>
     `;
+
     el.innerHTML = `
       <div style="max-width:1000px;margin:0 auto"><div class="prod-admin" style="padding:24px;margin-bottom:20px">
         <h3 style="font-size:18px;font-weight:700;margin-bottom:6px">🎨 محتوای صفحه اصلی</h3>
@@ -1068,7 +1223,7 @@ async function loadContentPanel() {
           <div class="np-grid">${imgField('story_img', 'عکس درباره ما')}</div>
         </div>
         <div class="np-section"><div class="np-label">📷 Instagram (۶ عکس)</div>
-          <div class="np-grid">${Array.from({length: 6}, (_, i) => imgField('instagram_' + (i + 1), 'عکس ' + (i + 1))).join('')}</div>
+          <div class="np-grid">${Array.from({ length: 6 }, (_, i) => imgField('instagram_' + (i + 1), 'عکس ' + (i + 1))).join('')}</div>
         </div>
         <div id="cv-err" class="err"></div>
         <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
@@ -1077,6 +1232,7 @@ async function loadContentPanel() {
         </div>
       </div></div>
     `;
+
     el.querySelectorAll('[data-upload-key]').forEach(btn => {
       const key = btn.dataset.uploadKey;
       const fileInput = document.getElementById('cv-file-' + key);
@@ -1112,6 +1268,7 @@ async function loadContentPanel() {
         }
       };
     });
+
     $('#cvReload').onclick = () => loadContentPanel();
     $('#cvSave').onclick = async () => {
       const err = $('#cv-err');
@@ -1119,11 +1276,13 @@ async function loadContentPanel() {
       const payload = {};
       el.querySelectorAll('input[type="text"][id^="cv-url-"]').forEach(inp => { payload[inp.id.replace('cv-url-', '')] = inp.value.trim(); });
       el.querySelectorAll('input[type="text"][id^="cv-txt-"]').forEach(inp => { payload[inp.id.replace('cv-txt-', '')] = inp.value.trim(); });
-      const btn = $('#cvSave'); btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+
+      const btn = $('#cvSave');
+      btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
       try {
         await api('/api/admin/content', { method: 'POST', body: JSON.stringify(payload) });
         state.content = { ...(state.content || {}), ...payload };
-        localStorage.setItem(CONTENT_CACHE, JSON.stringify(state.content));
+        localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(state.content));
         if (typeof window.applyContent === 'function') window.applyContent();
         toast('محتوا ذخیره شد ✓');
       } catch (e) {
@@ -1135,13 +1294,15 @@ async function loadContentPanel() {
       }
     };
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Settings Panel ---------- */
 async function loadSettingsPanel() {
   const el = $('#panel-settings');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const { settings } = await api('/api/settings');
@@ -1166,12 +1327,20 @@ async function loadSettingsPanel() {
       { key: 'countdown_label', label: 'متن شمارش معکوس', type: 'text' },
       { key: 'ticker_items', label: 'آیتم‌های تیکر (JSON array)', type: 'textarea', placeholder: '["متن ۱","متن ۲"]' },
     ];
+
     el.innerHTML = `
       <div style="max-width:900px;margin:0 auto"><div class="prod-admin" style="padding:28px">
         <h3 style="font-size:20px;font-weight:700;margin-bottom:6px">تنظیمات فروشگاه</h3>
         <p style="color:var(--dim);font-size:13px;margin-bottom:24px">این تنظیمات بلافاصله تو سایت اعمال می‌شن.</p>
         <div class="np-grid">
-          ${fields.map(f => `<div class="np-field" style="${f.type === 'textarea' ? 'grid-column:1/-1' : ''}"><label>${esc(f.label)}</label>${f.type === 'textarea' ? `<textarea id="st_${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(settings[f.key] || '')}</textarea>` : `<input type="${f.type}" id="st_${f.key}" value="${esc(settings[f.key] || '')}" placeholder="${esc(f.placeholder || '')}">`}</div>`).join('')}
+          ${fields.map(f => `
+            <div class="np-field" style="${f.type === 'textarea' ? 'grid-column:1/-1' : ''}">
+              <label>${esc(f.label)}</label>
+              ${f.type === 'textarea'
+                ? `<textarea id="st_${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(settings[f.key] || '')}</textarea>`
+                : `<input type="${f.type}" id="st_${f.key}" value="${esc(settings[f.key] || '')}" placeholder="${esc(f.placeholder || '')}">`}
+            </div>
+          `).join('')}
         </div>
         <div id="stErr" class="err"></div>
         <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
@@ -1180,34 +1349,44 @@ async function loadSettingsPanel() {
         </div>
       </div></div>
     `;
+
     $('#stReset').onclick = () => loadSettingsPanel();
     $('#stSave').onclick = async () => {
       const err = $('#stErr');
       err.classList.remove('on');
       const payload = {};
       fields.forEach(f => { const el = $('#st_' + f.key); if (el) payload[f.key] = el.value.trim(); });
+
       if (payload.ticker_items) {
         try { JSON.parse(payload.ticker_items); }
         catch { err.textContent = 'ticker_items باید آرایه JSON معتبر باشد'; err.classList.add('on'); return; }
       }
-      const btn = $('#stSave'); btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+
+      const btn = $('#stSave');
+      btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
       try {
         await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(payload) });
         state.settings = { ...state.settings, ...payload };
-        localStorage.setItem(SETTINGS_CACHE, JSON.stringify(state.settings));
-        applySettings();
+        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(state.settings));
+        if (typeof window.applySettings === 'function') window.applySettings();
         toast('تنظیمات ذخیره شد ✓');
-      } catch (e) { err.textContent = e.message; err.classList.add('on'); }
-      finally { btn.disabled = false; btn.textContent = '✓ ذخیره تنظیمات'; }
+      } catch (e) {
+        err.textContent = e.message;
+        err.classList.add('on');
+      } finally {
+        btn.disabled = false; btn.textContent = '✓ ذخیره تنظیمات';
+      }
     };
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
+/* ---------- Audit ---------- */
 async function loadAudit() {
   const el = $('#panel-audit');
+  if (!el) return;
   el.innerHTML = '<p style="color:var(--dim)">در حال بارگذاری...</p>';
   try {
     const { logs } = await api('/api/admin/audit');
@@ -1218,27 +1397,19 @@ async function loadAudit() {
         ${logs.map(l => `<div style="display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr;padding:12px 18px;font-size:12.5px;border-top:1px solid var(--line);align-items:center">
           <span class="mono" style="color:var(--lime)">${esc(l.action)}</span>
           <span style="color:var(--text)">${esc(l.target || '-')}</span>
-          <span style="color:var(--dim);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((l.payload || '').slice(0, 60))}</span>
+          <span style="color:var(--dim);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(String(l.payload || '').slice(0, 60))}</span>
           <span class="mono" style="color:var(--dim);font-size:11px">${esc(l.created_at)}</span>
         </div>`).join('')}
       </div>
     `;
   } catch (e) {
-    if (e.message.includes('دسترسی') || e.status === 401) adminLogout();
+    if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const openAdminBtn = $('#openAdmin');
-  const closeAdminBtn = $('#closeAdmin');
-  const adminLogoutBtn = $('#adminLogout');
-  if (openAdminBtn) openAdminBtn.onclick = openAdmin;
-  if (closeAdminBtn) closeAdminBtn.onclick = closeAdmin;
-  if (adminLogoutBtn) adminLogoutBtn.onclick = adminLogout;
-});
-
-if (document.readyState !== 'loading') {
+/* ---------- Bind ---------- */
+function bindAdminButtons() {
   const openAdminBtn = $('#openAdmin');
   const closeAdminBtn = $('#closeAdmin');
   const adminLogoutBtn = $('#adminLogout');
@@ -1246,3 +1417,14 @@ if (document.readyState !== 'loading') {
   if (closeAdminBtn) closeAdminBtn.onclick = closeAdmin;
   if (adminLogoutBtn) adminLogoutBtn.onclick = adminLogout;
 }
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindAdminButtons);
+} else {
+  bindAdminButtons();
+}
+
+/* ---------- Globals ---------- */
+window.openAdmin = openAdmin;
+window.closeAdmin = closeAdmin;
+window.adminLogout = adminLogout;
