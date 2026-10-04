@@ -1,26 +1,38 @@
 /* ==========================================================
-   G_SHOP - Content.js
+   G_SHOP — content.js
    مدیریت محتوای داینامیک (عکس‌ها و متن‌ها)
    ========================================================== */
+'use strict';
 
-const CONTENT_CACHE_KEY = 'gshop_content_cache';
+const CONTENT_CACHE_KEY = window.GSHOP_KEYS?.CONTENT_CACHE || 'gshop_content_cache_v7';
 
 async function loadContent() {
   try {
     const r = await api('/api/content');
-    state.content = r.content || {};
-    safeStore(CONTENT_CACHE_KEY, state.content);
-    applyContent();
+    if (r && typeof r.content === 'object' && r.content !== null) {
+      state.content = r.content;
+      safeStore(CONTENT_CACHE_KEY, state.content);
+      applyContent();
+    }
   } catch (e) {
     const cached = safeGet(CONTENT_CACHE_KEY, null);
-    if (cached) { state.content = cached; applyContent(); }
+    if (cached && typeof cached === 'object') {
+      state.content = cached;
+      applyContent();
+    }
   }
 }
 
 function applyContent() {
   const c = (state && state.content) || {};
-  const setImg = (id, url) => { const el = document.getElementById(id); if (el && url) el.src = url; };
-  const setTxt = (id, txt) => { const el = document.getElementById(id); if (el && txt != null && txt !== '') el.textContent = txt; };
+  const setImg = (id, url) => {
+    const el = document.getElementById(id);
+    if (el && url) el.src = url;
+  };
+  const setTxt = (id, txt) => {
+    const el = document.getElementById(id);
+    if (el && txt != null && txt !== '') el.textContent = txt;
+  };
 
   // Hero
   setImg('heroImg1', c.hero_img_1);
@@ -46,9 +58,7 @@ function applyContent() {
   setImg('storyImg', c.story_img);
 
   // Instagram
-  for (let i = 1; i <= 6; i++) {
-    setImg('igImg' + i, c['instagram_' + i]);
-  }
+  for (let i = 1; i <= 6; i++) setImg('instagram' === 'instagram' ? `igImg${i}` : '', c[`instagram_${i}`]);
 }
 
 window.loadContent = loadContent;
