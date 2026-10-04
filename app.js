@@ -298,6 +298,7 @@ function updateScrollLock() {
 }
 
 function loadLocal() {
+  try { localStorage.removeItem('undefined'); } catch {}  
   state.cart = safeGet(CART_KEY, []) || [];
   state.wishlist = safeGet(WISH_KEY, []) || [];
   state.recent = safeGet(RECENT_KEY, []) || [];
