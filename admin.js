@@ -213,8 +213,8 @@ async function loadDashboard() {
     };
 
     $('#clearCache').onclick = () => {
-      localStorage.removeItem(SETTINGS_CACHE_KEY);
-      localStorage.removeItem(CONTENT_CACHE_KEY);
+      localStorage.removeItem(ADMIN_SETTINGS_CACHE_KEY);
+      localStorage.removeItem(ADMIN_CONTENT_CACHE_KEY);
       toast('کش پاک شد. صفحه رو رفرش کن ✓');
     };
   } catch (e) {
@@ -1282,7 +1282,7 @@ async function loadContentPanel() {
       try {
         await api('/api/admin/content', { method: 'POST', body: JSON.stringify(payload) });
         state.content = { ...(state.content || {}), ...payload };
-        localStorage.setItem(CONTENT_CACHE_KEY, JSON.stringify(state.content));
+        localStorage.setItem(ADMIN_CONTENT_CACHE_KEY, JSON.stringify(state.content));
         if (typeof window.applyContent === 'function') window.applyContent();
         toast('محتوا ذخیره شد ✓');
       } catch (e) {
@@ -1367,7 +1367,7 @@ async function loadSettingsPanel() {
       try {
         await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(payload) });
         state.settings = { ...state.settings, ...payload };
-        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(state.settings));
+        localStorage.setItem(ADMIN_SETTINGS_CACHE_KEY, JSON.stringify(state.settings));
         if (typeof window.applySettings === 'function') window.applySettings();
         toast('تنظیمات ذخیره شد ✓');
       } catch (e) {
