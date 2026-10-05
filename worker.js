@@ -1,96 +1,1182 @@
-const CORS=(env)=>({"Access-Control-Allow-Origin":env.ALLOWED_ORIGINS||"*","Access-Control-Allow-Methods":"GET,POST,PATCH,DELETE,OPTIONS","Access-Control-Allow-Headers":"Content-Type, X-Admin-Token, Authorization","Access-Control-Max-Age":"86400","Vary":"Origin"});
-const SEC={"X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY","Referrer-Policy":"strict-origin-when-cross-origin","Permissions-Policy":"geolocation=(), microphone=(), camera=()","Strict-Transport-Security":"max-age=31536000; includeSubDomains"};
-const json=(d,s=200,env={})=>new Response(JSON.stringify(d),{status:s,headers:{"Content-Type":"application/json; charset=utf-8",...SEC,...CORS(env)}});
-const STATUSES=["pending","confirmed","shipped","delivered","cancelled"];
-const LOW=3;
-const PROV=["آذربایجان شرقی","آذربایجان غربی","اردبیل","اصفهان","البرز","ایلام","بوشهر","تهران","چهارمحال و بختیاری","خراسان جنوبی","خراسان رضوی","خراسان شمالی","خوزستان","زنجان","سمنان","سیستان و بلوچستان","فارس","قزوین","قم","کردستان","کرمان","کرمانشاه","کهگیلویه و بویراحمد","گلستان","گیلان","لرستان","مازندران","مرکزی","هرمزگان","همدان","یزد"];
-const SDEF={brand_name:"G_SHOP",brand_tagline:"پوشاک اسپرت",hero_tag:"● کالکشن ۲۰۲۶",hero_line1:"G_",hero_line2:"SHOP",hero_lead:'پوشاک <strong>اسپرت</strong> با <strong>طراحی مدرن</strong> و <strong>کیفیت بالا</strong>.',footer_desc:"فروشگاه آنلاین پوشاک اسپرت — طراحی مدرن، کیفیت بالا، قیمت منطقی.",phone:"09120507960",telegram:"Alisdt98",instagram:"g__shop11",email:"",address:"",free_shipping_threshold:"1000000",shipping_tehran:"35000",shipping_middle:"45000",shipping_other:"55000",countdown_end:"",countdown_label:"🔥 <b>پیشنهاد ویژه</b> تا پایان:",ticker_items:'["ارسال رایگان بالای ۱ میلیون تومان","کالکشن جدید ۲۰۲۶ منتشر شد","پرداخت در محل موجود است"]'};
-const enc=new TextEncoder();
-const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
-const rnd=(n=32)=>{const b=new Uint8Array(n);crypto.getRandomValues(b);return hex(b)};
-const eq=(a,b)=>{if(typeof a!=="string"||typeof b!=="string"||a.length!==b.length)return false;let o=0;for(let i=0;i<a.length;i++)o|=a.charCodeAt(i)^b.charCodeAt(i);return o===0};
-const eh=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const fa=n=>new Intl.NumberFormat("fa-IR").format(n);
-const san=(s,m=500)=>String(s??"").trim().slice(0,m).replace(/[\u0000-\u001F\u007F]/g,"");
-const okp=p=>/^09\d{9}$/.test(String(p).replace(/\D/g,""));
-const okpo=p=>/^\d{10}$/.test(String(p).replace(/\D/g,""));
-const oke=e=>!e||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-const rl=new Map();
-function rlimit(k,max,w){const n=Date.now();let b=rl.get(k);if(!b||n>b.reset){b={count:0,reset:n+w};rl.set(k,b)}b.count++;if(rl.size>5000)for(const[a,v]of rl)if(n>v.reset)rl.delete(a);return{ok:b.count<=max}}
-async function mkSess(env,u,req){const t=rnd(32);const h=parseInt(env.SESSION_HOURS||"12",10);const n=Date.now();const e=n+h*3600*1000;const ip=req.headers.get("CF-Connecting-IP")||"";const ua=(req.headers.get("User-Agent")||"").slice(0,200);await env.DB.prepare(`INSERT INTO sessions (token,username,ip,user_agent,created_at,expires_at,last_used) VALUES (?,?,?,?,?,?,?)`).bind(t,u,ip,ua,n,e,n).run();await env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(n).run();return{token:t,expiresAt:e}}
-async function chkSess(env,t){if(!t)return null;const s=await env.DB.prepare(`SELECT * FROM sessions WHERE token = ? AND expires_at > ?`).bind(t,Date.now()).first();if(!s)return null;env.DB.prepare(`UPDATE sessions SET last_used = ? WHERE token = ?`).bind(Date.now(),t).run().catch(()=>{});return s}
-async function needAdmin(req,env){const t=req.headers.get("X-Admin-Token")||(req.headers.get("Authorization")||"").replace("Bearer ","");const s=await chkSess(env,t);if(!s)throw new Response(JSON.stringify({error:"دسترسی ندارید یا منقضی شده"}),{status:401,headers:{"Content-Type":"application/json",...CORS(env)}});return s}
-async function audit(env,act,tgt,pl,req){try{const ip=req?.headers.get("CF-Connecting-IP")||"";await env.DB.prepare(`INSERT INTO audit_log (action,target,payload,ip) VALUES (?,?,?,?)`).bind(act,String(tgt||""),JSON.stringify(pl||{}).slice(0,1000),ip).run()}catch(e){}}
-async function tg(env,txt){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID)return{ok:false,error:"not_configured"};const ids=String(env.TELEGRAM_CHAT_ID).split(/[,،\s]+/).map(s=>s.trim()).filter(Boolean);const results=await Promise.all(ids.map(async(id)=>{try{const r=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:id,text:txt,parse_mode:"HTML",disable_web_page_preview:true})});if(!r.ok){const t=await r.text();return{ok:false,id,error:t}}return{ok:true,id}}catch(e){return{ok:false,id,error:e.message}}}));return{ok:results.some(r=>r.ok),results}}
-function tgMsg(o,items){const t=items.map(i=>`• <b>${eh(i.name)}</b>\n   ${eh(i.color)} · ${eh(i.size)} · ×${i.qty}\n   ${fa(i.price*i.qty)} تومان`).join("\n\n");const d=o.discount>0?`\n🎟 تخفیف${o.couponCode?` (${eh(o.couponCode)})`:""}: −${fa(o.discount)} تومان`:"";const sh=o.shipping>0?`\n🚚 ارسال: ${fa(o.shipping)} تومان`:`\n🚚 ارسال: <b>رایگان</b>`;return`🛒 <b>سفارش جدید G_SHOP</b>\n\n🆔 <code>${o.orderNo}</code>\n👤 ${eh(o.name)}\n📱 <code>${eh(o.phone)}</code>\n📍 ${eh(o.province||"")} - ${eh(o.city||"")}\n📮 کدپستی: <code>${eh(o.postal||"-")}</code>\n🏠 ${eh(o.address||"-")}\n\n━━━━━━━━━━━━━━━━\n\n${t}\n\n━━━━━━━━━━━━━━━━\n\n📦 تعداد: ${o.totalQty} عدد\n💰 جمع: ${fa(o.subtotal)} تومان${d}${sh}\n✅ <b>مبلغ نهایی: ${fa(o.total)} تومان</b>\n\n🕐 ${eh(o.date)}`}
-async function getSettings(env){try{const{results}=await env.DB.prepare(`SELECT key, value FROM settings`).all();const o={...SDEF};for(const r of results)o[r.key]=r.value;return o}catch{return{...SDEF}}}
-async function saveSetting(env,k,v){await env.DB.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`).bind(k,String(v??"")).run()}
-function calcShip(s,prov,after){const free=parseInt(s.free_shipping_threshold)||1000000;if(after>=free)return 0;if(["تهران","البرز","قم"].includes(prov))return parseInt(s.shipping_tehran)||35000;if(["اصفهان","مرکزی","قزوین","سمنان","مازندران","گلستان","گیلان","زنجان","همدان"].includes(prov))return parseInt(s.shipping_middle)||45000;return parseInt(s.shipping_other)||55000}
-export default{async fetch(req,env){const url=new URL(req.url),path=url.pathname,method=req.method,ip=req.headers.get("CF-Connecting-IP")||"unknown";
-if(method==="OPTIONS")return new Response(null,{headers:{...CORS(env),...SEC}});
-try{
-if(path.startsWith("/api/img/")&&method==="GET"){if(!rlimit(`img:${ip}`,300,60000).ok)return new Response("Too many",{status:429});const fid=decodeURIComponent(path.slice(9));if(!fid||fid.length>300||fid.includes(".."))return new Response("Bad",{status:400});try{const tr=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fid)}`);const td=await tr.json();if(!td.ok)return new Response("Not found",{status:404,headers:SEC});const ir=await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${td.result.file_path}`);if(!ir.ok)return new Response("Upstream",{status:502});return new Response(ir.body,{headers:{"Content-Type":ir.headers.get("Content-Type")||"image/jpeg","Cache-Control":"public, max-age=31536000, immutable","Access-Control-Allow-Origin":"*",...SEC}})}catch{return new Response("Err",{status:500})}}
-if(path==="/api/health"&&method==="GET")return json({ok:true,time:new Date().toISOString()},200,env);
-if(path==="/api/settings"&&method==="GET"){const settings=await getSettings(env);return json({settings},200,env)}
-if(path==="/api/content"&&method==="GET"){try{const{results}=await env.DB.prepare(`SELECT key, value FROM content`).all();const o={};for(const r of results)o[r.key]=r.value;return json({content:o},200,env)}catch{return json({content:{}},200,env)}}
-if(path==="/api/products"&&method==="GET"){if(!rlimit(`products:${ip}`,120,60000).ok)return json({error:"تعداد درخواست زیاد"},429,env);const{results:pr}=await env.DB.prepare(`SELECT id,name,slug,price,compare_price,image,description,details,tag,category,sort_order,rating_avg,rating_count,active,created_at FROM products WHERE active = 1 ORDER BY sort_order, id`).all();const{results:va}=await env.DB.prepare(`SELECT product_id,color,size,stock,extra_price FROM variants`).all();const{results:im}=await env.DB.prepare(`SELECT id,product_id,url,sort_order FROM product_images ORDER BY sort_order`).all();const vm={},imm={};for(const v of va)(vm[v.product_id]||=[]).push(v);for(const i of im)(imm[i.product_id]||=[]).push(i);return json({products:pr.map(p=>({...p,details:p.details?JSON.parse(p.details):{},variants:vm[p.id]||[],gallery:imm[p.id]||[]}))},200,env)}
-if(/^\/api\/products\/\d+$/.test(path)&&method==="GET"){const id=Number(path.split("/").pop());const p=await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND active = 1`).bind(id).first();if(!p)return json({error:"محصول پیدا نشد"},404,env);const{results:v}=await env.DB.prepare(`SELECT color,size,stock,extra_price FROM variants WHERE product_id = ?`).bind(id).all();const{results:g}=await env.DB.prepare(`SELECT id,url,sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order`).bind(id).all();return json({product:{...p,details:p.details?JSON.parse(p.details):{},variants:v,gallery:g}},200,env)}
-if(/^\/api\/products\/\d+\/reviews$/.test(path)&&method==="GET"){const id=Number(path.split("/")[3]);const{results}=await env.DB.prepare(`SELECT id,name,rating,comment,created_at FROM product_reviews WHERE product_id = ? AND approved = 1 ORDER BY id DESC LIMIT 50`).bind(id).all();return json({reviews:results},200,env)}
-if(/^\/api\/products\/\d+\/reviews$/.test(path)&&method==="POST"){if(!rlimit(`review:${ip}`,5,3600000).ok)return json({error:"تعداد نظرات زیاد است"},429,env);const id=Number(path.split("/")[3]);const b=await req.json();const n=san(b.name,60),c=san(b.comment,800),r=Math.max(1,Math.min(5,parseInt(b.rating)||5));if(!n||!c)return json({error:"نام و متن نظر الزامی است"},400,env);await env.DB.prepare(`INSERT INTO product_reviews (product_id,name,rating,comment) VALUES (?,?,?,?)`).bind(id,n,r,c).run();return json({ok:true,message:"نظر ثبت شد"},200,env)}
-if(path==="/api/coupons/validate"&&method==="POST"){if(!rlimit(`coupon:${ip}`,20,60000).ok)return json({error:"کمی صبر کنید"},429,env);const{code,subtotal}=await req.json();const cl=String(code||"").toUpperCase().trim().replace(/[^A-Z0-9]/g,"").slice(0,30);if(!cl)return json({valid:false,error:"کد وارد نشده"},400,env);const c=await env.DB.prepare(`SELECT * FROM coupons WHERE code = ? AND active = 1`).bind(cl).first();if(!c)return json({valid:false,error:"کد تخفیف نامعتبر است"},400,env);if(c.max_uses&&c.uses>=c.max_uses)return json({valid:false,error:"ظرفیت این کد تکمیل شده"},400,env);if(c.expires_at&&new Date(c.expires_at)<new Date())return json({valid:false,error:"این کد منقضی شده"},400,env);if(c.min_total&&Number(subtotal||0)<c.min_total)return json({valid:false,error:`حداقل خرید ${fa(c.min_total)} تومان است`},400,env);return json({valid:true,coupon:{code:c.code,type:c.type,value:c.value,label:c.label,min_total:c.min_total}},200,env)}
-if(path==="/api/orders"&&method==="POST"){if(!rlimit(`order:${ip}`,5,600000).ok)return json({error:"تعداد سفارشات زیاد"},429,env);const b=await req.json();if(b.website)return json({ok:true,orderNo:"GS-00000000"},200,env);const n=san(b.name,80),ph=san(b.phone,20),em=san(b.email||"",100),prov=san(b.province||"",40),ct=san(b.city||"",60),pc=san(b.postal_code||"",20),ad=san(b.address||"",400),nt=san(b.note||"",500),cc=san(b.couponCode||"",30).toUpperCase(),items=b.items;
-if(!n||n.length<3)return json({error:"نام و نام خانوادگی را کامل وارد کنید"},400,env);
-if(!ph||!okp(ph))return json({error:"شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد"},400,env);
-if(em&&!oke(em))return json({error:"ایمیل نامعتبر است"},400,env);
-if(!prov||!PROV.includes(prov))return json({error:"استان را انتخاب کنید"},400,env);
-if(!ct||ct.length<2)return json({error:"نام شهر معتبر نیست"},400,env);
-if(!pc||!okpo(pc))return json({error:"کد پستی باید ۱۰ رقم باشد"},400,env);
-if(!ad||ad.length<10)return json({error:"آدرس کامل را وارد کنید"},400,env);
-if(!Array.isArray(items)||!items.length)return json({error:"سبد خرید خالی است"},400,env);
-if(items.length>50)return json({error:"تعداد اقلام زیاد"},400,env);
-let sub=0;const prep=[];
-for(const it of items){const pid=parseInt(it.productId),q=Math.max(1,Math.min(20,parseInt(it.qty)||1)),col=san(it.color,40),sz=san(it.size,20),nt2=san(it.note||"",150);if(!pid||!col||!sz)return json({error:"قلم نامعتبر"},400,env);const v=await env.DB.prepare(`SELECT stock FROM variants WHERE product_id = ? AND color = ? AND size = ?`).bind(pid,col,sz).first();if(!v||v.stock<q)return json({error:`موجودی «${san(it.name,60)}» کافی نیست`},400,env);const p=await env.DB.prepare(`SELECT name,price FROM products WHERE id = ? AND active = 1`).bind(pid).first();if(!p)return json({error:"محصول نامعتبر"},400,env);sub+=p.price*q;prep.push({productId:pid,name:p.name,color:col,size:sz,qty:q,price:p.price,note:nt2})}
-let disc=0,ac=null;if(cc){const c=await env.DB.prepare(`SELECT * FROM coupons WHERE code = ? AND active = 1`).bind(cc).first();if(c&&(!c.max_uses||c.uses<c.max_uses)&&(!c.expires_at||new Date(c.expires_at)>=new Date())&&(!c.min_total||sub>=c.min_total)){ac=c.code;disc=c.type==="percent"?Math.round(sub*c.value/100):Math.min(c.value,sub)}}
-const settings=await getSettings(env);const after=sub-disc;const ship=calcShip(settings,prov,after);const total=after+ship;const on="GS-"+Date.now().toString().slice(-8)+Math.random().toString(36).slice(2,4).toUpperCase();const dt=new Date().toLocaleString("fa-IR");
-const ins=await env.DB.prepare(`INSERT INTO orders (order_no,name,phone,email,address,city,postal_code,note,subtotal,discount,shipping,coupon_code,total,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',datetime('now'))`).bind(on,n,ph,em,`${prov} - ${ct} - ${ad}`,ct,pc,nt,sub,disc,ship,ac,total).run();
-const oid=ins.meta.last_row_id;
-for(const it of prep){await env.DB.prepare(`INSERT INTO order_items (order_id,product_id,name,color,size,qty,price) VALUES (?,?,?,?,?,?,?)`).bind(oid,it.productId,it.name,it.color,it.size,it.qty,it.price).run();await env.DB.prepare(`UPDATE variants SET stock = MAX(0, stock - ?) WHERE product_id = ? AND color = ? AND size = ?`).bind(it.qty,it.productId,it.color,it.size).run()}
-if(ac)await env.DB.prepare(`UPDATE coupons SET uses = uses + 1 WHERE code = ?`).bind(ac).run();
-await tg(env,tgMsg({orderNo:on,name:n,phone:ph,province:prov,city:ct,postal:pc,address:ad,subtotal:sub,discount:disc,couponCode:ac,shipping:ship,total,totalQty:prep.reduce((s,i)=>s+i.qty,0),date:dt},prep));
-return json({ok:true,orderNo:on,subtotal:sub,discount:disc,shipping:ship,total,items:prep},200,env)}
-if(path==="/api/orders/track"&&method==="POST"){if(!rlimit(`track:${ip}`,20,60000).ok)return json({error:"کمی صبر کنید"},429,env);const{orderNo,phone}=await req.json();const cn=san(orderNo,30).toUpperCase(),cp=san(phone,20);if(!cn||!cp)return json({error:"اطلاعات ناقص"},400,env);const o=await env.DB.prepare(`SELECT * FROM orders WHERE order_no = ?`).bind(cn).first();if(!o)return json({error:"سفارش یافت نشد"},404,env);const da=String(o.phone).replace(/\D/g,""),db=String(cp).replace(/\D/g,"");if(!eq(da,db))return json({error:"موبایل مطابقت ندارد"},403,env);const{results:items}=await env.DB.prepare(`SELECT name,color,size,qty,price FROM order_items WHERE order_id = ?`).bind(o.id).all();return json({order:{orderNo:o.order_no,name:o.name,status:o.status,total:o.total,subtotal:o.subtotal,discount:o.discount,shipping:o.shipping,tracking_no:o.tracking_no,created_at:o.created_at,updated_at:o.updated_at,items}},200,env)}
-if(path==="/api/stock-alert"&&method==="POST"){if(!rlimit(`alert:${ip}`,10,3600000).ok)return json({error:"زیاد"},429,env);const{productId,color,size,phone}=await req.json();const cp=san(phone,20);if(!okp(cp))return json({error:"شماره نامعتبر"},400,env);await env.DB.prepare(`INSERT INTO stock_alerts (product_id,color,size,phone) VALUES (?,?,?,?)`).bind(parseInt(productId),san(color,40),san(size,20),cp).run();return json({ok:true},200,env)}
-if(path==="/api/subscribe"&&method==="POST"){if(!rlimit(`sub:${ip}`,5,3600000).ok)return json({error:"زیاد"},429,env);const{email}=await req.json();const cl=san(email,120).toLowerCase();if(!oke(cl))return json({error:"ایمیل نامعتبر"},400,env);await env.DB.prepare(`INSERT OR IGNORE INTO subscribers (email) VALUES (?)`).bind(cl).run();return json({ok:true},200,env)}
-if(path==="/api/admin/login"&&method==="POST"){const r=rlimit(`login:${ip}`,5,600000);if(!r.ok)return json({error:"تلاش زیاد. ۱۰ دقیقه صبر کنید."},429,env);const{username,password}=await req.json();const u=san(username||"",40),p=String(password||"");const eu=env.ADMIN_USERNAME||"admin",ep=env.ADMIN_PASSWORD;if(!ep)return json({error:"ADMIN_PASSWORD تنظیم نشده"},500,env);if(!eq(u,eu)||!eq(p,ep)){await audit(env,"login.failed",u,{ip},req);return json({error:"نام کاربری یا رمز اشتباه"},401,env)}const s=await mkSess(env,u,req);await audit(env,"login.success",u,{},req);return json({token:s.token,expiresAt:s.expiresAt},200,env)}
-if(path==="/api/admin/logout"&&method==="POST"){const t=req.headers.get("X-Admin-Token");if(t)await env.DB.prepare(`DELETE FROM sessions WHERE token = ?`).bind(t).run();return json({ok:true},200,env)}
-if(path.startsWith("/api/admin/")){await needAdmin(req,env);
-if(path==="/api/admin/upload"&&method==="POST"){const r=rlimit(`upload:${ip}`,30,3600000);if(!r.ok)return json({error:"محدودیت آپلود"},429,env);let f;try{f=await req.formData()}catch{return json({error:"فرمت نامعتبر"},400,env)}const file=f.get("file");if(!file||typeof file==="string")return json({error:"فایلی ارسال نشد"},400,env);if(file.size>5*1024*1024)return json({error:"حجم بیش از ۵ مگابایت"},400,env);const al=["image/jpeg","image/png","image/webp","image/gif"];if(!al.includes(file.type))return json({error:"فرمت پشتیبانی نمی‌شود"},400,env);const tf=new FormData();tf.append("chat_id",String(env.TELEGRAM_CHAT_ID).split(/[,،\s]+/)[0].trim());tf.append("document",file,file.name||"image.jpg");const tr=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendDocument`,{method:"POST",body:tf});const td=await tr.json();if(!td.ok)return json({error:"خطا در آپلود: "+(td.description||"")},500,env);const fid=td.result.document.file_id;return json({ok:true,url:`${url.origin}/api/img/${fid}`,fileId:fid},200,env)}
-if(path==="/api/admin/settings"&&method==="GET"){const settings=await getSettings(env);return json({settings},200,env)}
-if(path==="/api/admin/settings"&&method==="POST"){const b=await req.json();const allowed=Object.keys(SDEF);const saved={};for(const k of allowed){if(b[k]!==undefined){const v=String(b[k]??"").slice(0,5000);await saveSetting(env,k,v);saved[k]=v}}await audit(env,"settings.save","all",{keys:Object.keys(saved)},req);return json({ok:true,settings:saved},200,env)}
-if(path==="/api/admin/content"&&method==="GET"){const{results}=await env.DB.prepare(`SELECT key, value FROM content`).all();const o={};for(const r of results)o[r.key]=r.value;return json({content:o},200,env)}
-if(path==="/api/admin/content"&&method==="POST"){const b=await req.json();const sv={};for(const[k,v]of Object.entries(b)){if(typeof k!=="string"||k.length>60)continue;const val=String(v??"").slice(0,2000);await env.DB.prepare(`INSERT INTO content (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`).bind(k,val).run();sv[k]=val}await audit(env,"content.save","all",{keys:Object.keys(sv)},req);return json({ok:true,content:sv},200,env)}
-if(path==="/api/admin/products"&&method==="POST"){const b=await req.json();const n=san(b.name,120),p=Math.max(0,parseInt(b.price)||0),cp=b.compare_price?Math.max(0,parseInt(b.compare_price)):null,d=san(b.description||"",1000),t=san(b.tag||"",20),c=san(b.category||"tshirt",30),so=parseInt(b.sort_order)||0,dt=b.details&&typeof b.details==="object"?JSON.stringify(b.details).slice(0,2000):null;const imgs=Array.isArray(b.images)?b.images.map(x=>san(x,500)).filter(Boolean).slice(0,5):[];const i=imgs[0]||san(b.image||"",500);if(!n||!p||!i)return json({error:"نام، قیمت و تصویر الزامی"},400,env);const sl=n.toLowerCase().replace(/\s+/g,"-").replace(/[^\w\-آ-ی]/g,"").slice(0,60)||"product-"+Date.now();const r=await env.DB.prepare(`INSERT INTO products (name,slug,price,compare_price,image,description,details,tag,category,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(n,sl,p,cp,i,d,dt,t||null,c,so).run();const pid=r.meta.last_row_id;for(let gi=1;gi<imgs.length;gi++){await env.DB.prepare(`INSERT INTO product_images (product_id,url,sort_order) VALUES (?,?,?)`).bind(pid,imgs[gi],gi).run()}const vv=Array.isArray(b.variants)?b.variants:[];for(const v of vv){const col=san(v.color,40),sz=san(v.size,20),st=Math.max(0,parseInt(v.stock)||0);if(col&&sz)await env.DB.prepare(`INSERT INTO variants (product_id,color,size,stock) VALUES (?,?,?,?)`).bind(pid,col,sz,st).run()}await audit(env,"product.create",pid,{name:n,price:p},req);return json({ok:true,id:pid},200,env)}
-if(/^\/api\/admin\/products\/\d+$/.test(path)&&method==="PATCH"){const pid=Number(path.split("/").pop());const b=await req.json();const u=[],bd=[];if(b.name!==undefined){u.push("name = ?");bd.push(san(b.name,120))}if(b.price!==undefined){u.push("price = ?");bd.push(Math.max(0,parseInt(b.price)||0))}if(b.compare_price!==undefined){u.push("compare_price = ?");bd.push(b.compare_price?Math.max(0,parseInt(b.compare_price)):null)}if(b.description!==undefined){u.push("description = ?");bd.push(san(b.description,1000))}if(b.tag!==undefined){u.push("tag = ?");bd.push(san(b.tag,20)||null)}if(b.category!==undefined){u.push("category = ?");bd.push(san(b.category,30))}if(b.image!==undefined){u.push("image = ?");bd.push(san(b.image,500))}if(b.active!==undefined){u.push("active = ?");bd.push(b.active?1:0)}if(b.sort_order!==undefined){u.push("sort_order = ?");bd.push(parseInt(b.sort_order)||0)}if(b.details!==undefined){u.push("details = ?");bd.push(b.details&&typeof b.details==="object"?JSON.stringify(b.details).slice(0,2000):null)}if(!u.length)return json({error:"چیزی برای آپدیت نیست"},400,env);bd.push(pid);await env.DB.prepare(`UPDATE products SET ${u.join(", ")} WHERE id = ?`).bind(...bd).run();await audit(env,"product.update",pid,b,req);return json({ok:true},200,env)}
-if(/^\/api\/admin\/products\/\d+$/.test(path)&&method==="DELETE"){const pid=Number(path.split("/").pop());await env.DB.prepare(`DELETE FROM variants WHERE product_id = ?`).bind(pid).run();await env.DB.prepare(`DELETE FROM product_images WHERE product_id = ?`).bind(pid).run();await env.DB.prepare(`DELETE FROM product_reviews WHERE product_id = ?`).bind(pid).run();await env.DB.prepare(`DELETE FROM products WHERE id = ?`).bind(pid).run();await audit(env,"product.delete",pid,{},req);return json({ok:true},200,env)}
-if(path==="/api/admin/products/image"&&method==="PATCH"){const{productId,imageUrl}=await req.json();if(!productId||!imageUrl)return json({error:"ناقص"},400,env);await env.DB.prepare(`UPDATE products SET image = ? WHERE id = ?`).bind(san(imageUrl,500),productId).run();return json({ok:true},200,env)}
-if(/^\/api\/admin\/products\/\d+\/gallery$/.test(path)&&method==="POST"){const pid=Number(path.split("/")[4]);const{url:iu}=await req.json();if(!iu)return json({error:"URL الزامی"},400,env);const m=await env.DB.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM product_images WHERE product_id = ?`).bind(pid).first();await env.DB.prepare(`INSERT INTO product_images (product_id,url,sort_order) VALUES (?,?,?)`).bind(pid,san(iu,500),m.m+1).run();return json({ok:true},200,env)}
-if(/^\/api\/admin\/gallery\/\d+$/.test(path)&&method==="DELETE"){const iid=Number(path.split("/").pop());await env.DB.prepare(`DELETE FROM product_images WHERE id = ?`).bind(iid).run();return json({ok:true},200,env)}
-if(path==="/api/admin/stats"&&method==="GET"){const to=(await env.DB.prepare(`SELECT COUNT(*) AS c FROM orders`).first()).c;const rv=(await env.DB.prepare(`SELECT COALESCE(SUM(total),0) AS s FROM orders WHERE status != 'cancelled'`).first()).s;const pd=(await env.DB.prepare(`SELECT COUNT(*) AS c FROM orders WHERE status = 'pending'`).first()).c;const st=(await env.DB.prepare(`SELECT COALESCE(SUM(stock),0) AS s FROM variants`).first()).s;const ls=(await env.DB.prepare(`SELECT COUNT(*) AS c FROM variants WHERE stock > 0 AND stock <= ?`).bind(LOW).first()).c;const{results:sc}=await env.DB.prepare(`SELECT date(created_at) AS d, COALESCE(SUM(total),0) AS total, COUNT(*) AS cnt FROM orders WHERE created_at >= datetime('now', '-7 days') AND status != 'cancelled' GROUP BY d ORDER BY d`).all();const ro=(await env.DB.prepare(`SELECT order_no,name,total,status,created_at FROM orders ORDER BY id DESC LIMIT 5`).all()).results;return json({totalOrders:to,revenue:rv,pending:pd,stock:st,lowStock:ls,salesChart:sc,recentOrders:ro},200,env)}
-if(path==="/api/admin/orders"&&method==="GET"){const s=url.searchParams.get("status"),q=san(url.searchParams.get("q")||"",50);let qy=`SELECT * FROM orders`;const bd=[],wh=[];if(s&&STATUSES.includes(s)){wh.push(`status = ?`);bd.push(s)}if(q){wh.push(`(order_no LIKE ? OR name LIKE ? OR phone LIKE ?)`);bd.push(`%${q}%`,`%${q}%`,`%${q}%`)}if(wh.length)qy+=` WHERE `+wh.join(" AND ");qy+=` ORDER BY id DESC LIMIT 500`;const{results:os}=await env.DB.prepare(qy).bind(...bd).all();const{results:its}=await env.DB.prepare(`SELECT * FROM order_items`).all();const{results:nts}=await env.DB.prepare(`SELECT * FROM order_notes ORDER BY id DESC`).all();const im={},nm={};for(const i of its)(im[i.order_id]||=[]).push(i);for(const n of nts)(nm[n.order_id]||=[]).push(n);return json({orders:os.map(o=>({...o,items:im[o.id]||[],notes:nm[o.id]||[]}))},200,env)}
-if(path==="/api/admin/orders.csv"&&method==="GET"){const{results:os}=await env.DB.prepare(`SELECT * FROM orders ORDER BY id DESC`).all();const es=s=>{let str=String(s??"");if(/^[=+\-@\t\r]/.test(str))str="'"+str;return`"${str.replace(/"/g,'""')}"`};const ln=["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"];for(const o of os){const{results:its}=await env.DB.prepare(`SELECT name,color,size,qty FROM order_items WHERE order_id = ?`).bind(o.id).all();const it=its.map(i=>`${i.name}/${i.color}/${i.size} x${i.qty}`).join(" | ");ln.push([es(o.order_no),es(o.name),es(o.phone),es(o.city||""),es(o.address||""),es(o.status),o.subtotal,o.discount,o.shipping||0,o.total,es(o.created_at),es(it)].join(","))}const csv="\uFEFF"+ln.join("\n");return new Response(csv,{headers:{"Content-Type":"text/csv; charset=utf-8","Content-Disposition":`attachment; filename="gshop-orders-${Date.now()}.csv"`,...SEC,...CORS(env)}})}
-if(/^\/api\/admin\/orders\/[^/]+$/.test(path)&&method==="PATCH"){const on=decodeURIComponent(path.split("/").pop());const{status,tracking_no}=await req.json();if(!STATUSES.includes(status))return json({error:"وضعیت نامعتبر"},400,env);const old=await env.DB.prepare(`SELECT id,status FROM orders WHERE order_no = ?`).bind(on).first();if(!old)return json({error:"سفارش یافت نشد"},404,env);if(status==="cancelled"&&old.status!=="cancelled"){const{results:its}=await env.DB.prepare(`SELECT product_id,color,size,qty FROM order_items WHERE order_id = ?`).bind(old.id).all();for(const i of its)await env.DB.prepare(`UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?`).bind(i.qty,i.product_id,i.color,i.size).run()}await env.DB.prepare(`UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ?`).bind(status,tracking_no?san(tracking_no,50):null,on).run();await audit(env,"order.status",on,{status,tracking_no},req);return json({ok:true},200,env)}
-if(/^\/api\/admin\/orders\/[^/]+\/notes$/.test(path)&&method==="POST"){const on=decodeURIComponent(path.split("/")[4]);const{note}=await req.json();const cl=san(note,500);if(!cl)return json({error:"متن الزامی"},400,env);const o=await env.DB.prepare(`SELECT id FROM orders WHERE order_no = ?`).bind(on).first();if(!o)return json({error:"سفارش یافت نشد"},404,env);await env.DB.prepare(`INSERT INTO order_notes (order_id,note) VALUES (?,?)`).bind(o.id,cl).run();return json({ok:true},200,env)}
-if(/^\/api\/admin\/orders\/[^/]+$/.test(path)&&method==="DELETE"){const on=decodeURIComponent(path.split("/").pop());const o=await env.DB.prepare(`SELECT id FROM orders WHERE order_no = ?`).bind(on).first();if(o){await env.DB.prepare(`DELETE FROM order_items WHERE order_id = ?`).bind(o.id).run();await env.DB.prepare(`DELETE FROM order_notes WHERE order_id = ?`).bind(o.id).run();await env.DB.prepare(`DELETE FROM orders WHERE id = ?`).bind(o.id).run()}await audit(env,"order.delete",on,{},req);return json({ok:true},200,env)}
-if(path==="/api/admin/stock"&&method==="PATCH"){const{productId,color,size,delta}=await req.json();if(typeof delta!=="number"||Math.abs(delta)>10000)return json({error:"delta نامعتبر"},400,env);await env.DB.prepare(`UPDATE variants SET stock = MAX(0, stock + ?) WHERE product_id = ? AND color = ? AND size = ?`).bind(delta,productId,color,size).run();return json({ok:true},200,env)}
-if(path==="/api/admin/low-stock"&&method==="GET"){const{results}=await env.DB.prepare(`SELECT v.*, p.name AS product_name FROM variants v JOIN products p ON p.id = v.product_id WHERE v.stock <= ? ORDER BY v.stock ASC`).bind(LOW).all();return json({items:results},200,env)}
-if(path==="/api/admin/coupons"&&method==="GET"){const{results}=await env.DB.prepare(`SELECT * FROM coupons ORDER BY created_at DESC`).all();return json({coupons:results},200,env)}
-if(path==="/api/admin/coupons"&&method==="POST"){const b=await req.json();const c=san(b.code,30).toUpperCase().replace(/[^A-Z0-9]/g,""),t=b.type==="fixed"?"fixed":"percent",v=Math.max(1,parseInt(b.value)||0),l=san(b.label||"",120),mu=b.max_uses?Math.max(1,parseInt(b.max_uses)):null,mt=b.min_total?Math.max(0,parseInt(b.min_total)):0,ex=b.expires_at?san(b.expires_at,30):null;if(!c||!v)return json({error:"کد و مقدار الزامی"},400,env);try{await env.DB.prepare(`INSERT INTO coupons (code,type,value,label,max_uses,min_total,expires_at) VALUES (?,?,?,?,?,?,?)`).bind(c,t,v,l,mu,mt,ex).run()}catch{return json({error:"این کد وجود دارد"},400,env)}await audit(env,"coupon.create",c,{t,v},req);return json({ok:true},200,env)}
-if(/^\/api\/admin\/coupons\/[A-Z0-9]+$/.test(path)&&method==="DELETE"){const c=path.split("/").pop();await env.DB.prepare(`DELETE FROM coupons WHERE code = ?`).bind(c).run();await audit(env,"coupon.delete",c,{},req);return json({ok:true},200,env)}
-if(/^\/api\/admin\/coupons\/[A-Z0-9]+$/.test(path)&&method==="PATCH"){const c=path.split("/").pop();const{active}=await req.json();await env.DB.prepare(`UPDATE coupons SET active = ? WHERE code = ?`).bind(active?1:0,c).run();return json({ok:true},200,env)}
-if(path==="/api/admin/reviews"&&method==="GET"){const{results}=await env.DB.prepare(`SELECT r.*, p.name AS product_name FROM product_reviews r JOIN products p ON p.id = r.product_id ORDER BY r.id DESC LIMIT 200`).all();return json({reviews:results},200,env)}
-if(/^\/api\/admin\/reviews\/\d+$/.test(path)&&method==="PATCH"){const rid=Number(path.split("/").pop());const{approved}=await req.json();await env.DB.prepare(`UPDATE product_reviews SET approved = ? WHERE id = ?`).bind(approved?1:0,rid).run();const rv=await env.DB.prepare(`SELECT product_id FROM product_reviews WHERE id = ?`).bind(rid).first();if(rv)await env.DB.prepare(`UPDATE products SET rating_avg = COALESCE((SELECT AVG(rating) FROM product_reviews WHERE product_id = ? AND approved = 1), 0), rating_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = ? AND approved = 1) WHERE id = ?`).bind(rv.product_id,rv.product_id,rv.product_id).run();return json({ok:true},200,env)}
-if(/^\/api\/admin\/reviews\/\d+$/.test(path)&&method==="DELETE"){const rid=Number(path.split("/").pop());await env.DB.prepare(`DELETE FROM product_reviews WHERE id = ?`).bind(rid).run();return json({ok:true},200,env)}
-if(path==="/api/admin/audit"&&method==="GET"){const{results}=await env.DB.prepare(`SELECT * FROM audit_log ORDER BY id DESC LIMIT 100`).all();return json({logs:results},200,env)}
-if(path==="/api/admin/telegram-test"&&method==="POST"){const r=await tg(env,"🧪 <b>تست G_SHOP</b>\n\nربات وصل شد ✓\n\n🕐 "+new Date().toLocaleString("fa-IR"));if(r.ok){const cnt=r.results?.filter(x=>x.ok).length||0;return json({ok:true,sent:cnt,total:r.results?.length||0},200,env)}return json({error:"ارسال ناموفق: "+(r.results?.[0]?.error||"unknown")},500,env)}
+/* ==========================================================
+   G_SHOP — Cloudflare Worker v13
+   Backend API + payment gateway + image proxy + admin panel
+   ========================================================== */
+
+/* ---------- Constants & Headers ---------- */
+const CORS = (env) => ({
+  "Access-Control-Allow-Origin": env.ALLOWED_ORIGINS || "*",
+  "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, Authorization",
+  "Access-Control-Max-Age": "86400",
+  "Vary": "Origin",
+});
+
+const SEC = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+
+const json = (d, s = 200, env = {}) => new Response(
+  JSON.stringify(d),
+  {
+    status: s,
+    headers: { "Content-Type": "application/json; charset=utf-8", ...SEC, ...CORS(env) },
+  }
+);
+
+const STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
+const LOW = 3;
+
+const PROV = [
+  "آذربایجان شرقی","آذربایجان غربی","اردبیل","اصفهان","البرز","ایلام","بوشهر",
+  "تهران","چهارمحال و بختیاری","خراسان جنوبی","خراسان رضوی","خراسان شمالی",
+  "خوزستان","زنجان","سمنان","سیستان و بلوچستان","فارس","قزوین","قم","کردستان",
+  "کرمان","کرمانشاه","کهگیلویه و بویراحمد","گلستان","گیلان","لرستان","مازندران",
+  "مرکزی","هرمزگان","همدان","یزد",
+];
+
+const SDEF = {
+  brand_name: "G_SHOP",
+  brand_tagline: "پوشاک اسپرت",
+  hero_tag: "● کالکشن ۲۰۲۶",
+  hero_line1: "G_",
+  hero_line2: "SHOP",
+  hero_lead: 'پوشاک <strong>اسپرت</strong> با <strong>طراحی مدرن</strong> و <strong>کیفیت بالا</strong>.',
+  footer_desc: "فروشگاه آنلاین پوشاک اسپرت — طراحی مدرن، کیفیت بالا، قیمت منطقی.",
+  phone: "09120507960",
+  telegram: "Alisdt98",
+  instagram: "g__shop11",
+  email: "",
+  address: "",
+  free_shipping_threshold: "1000000",
+  shipping_tehran: "35000",
+  shipping_middle: "45000",
+  shipping_other: "55000",
+  countdown_end: "",
+  countdown_label: "🔥 <b>پیشنهاد ویژه</b> تا پایان:",
+  ticker_items: '["ارسال رایگان بالای ۱ میلیون تومان","کالکشن جدید ۲۰۲۶ منتشر شد","پرداخت در محل موجود است"]',
+};
+
+const ZR = "https://gateway.zibal.ir/v1/request";
+const ZV = "https://gateway.zibal.ir/v1/verify";
+const ZS = "https://gateway.zibal.ir/start/";
+
+/* ---------- Crypto / Utils ---------- */
+const rnd = (n = 32) => {
+  const b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  return [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+};
+
+const eq = (a, b) => {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let o = 0;
+  for (let i = 0; i < a.length; i++) o |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return o === 0;
+};
+
+const eh = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;",
+}[c]));
+
+const fa = (n) => new Intl.NumberFormat("fa-IR").format(n);
+
+const san = (s, m = 500) => String(s ?? "").trim().slice(0, m).replace(/[\u0000-\u001F\u007F]/g, "");
+
+const okp = (p) => /^09\d{9}$/.test(String(p).replace(/\D/g, ""));
+const okpo = (p) => /^\d{10}$/.test(String(p).replace(/\D/g, ""));
+const oke = (e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+/* ---------- Rate Limiter (in-memory) ---------- */
+const rl = new Map();
+function rlimit(k, max, w) {
+  const n = Date.now();
+  let b = rl.get(k);
+  if (!b || n > b.reset) { b = { count: 0, reset: n + w }; rl.set(k, b); }
+  b.count++;
+  // periodic cleanup
+  if (rl.size > 5000) {
+    for (const [a, v] of rl) if (n > v.reset) rl.delete(a);
+  }
+  return { ok: b.count <= max };
 }
-return json({error:"یافت نشد"},404,env)}catch(e){if(e instanceof Response)return e;return json({error:"خطای سرور: "+e.message},500,env)}}};
+
+/* ---------- Session Management ---------- */
+async function mkSess(env, u, req, ctx) {
+  const t = rnd(32);
+  const h = parseInt(env.SESSION_HOURS || "12", 10);
+  const n = Date.now();
+  const e = n + h * 3600 * 1000;
+  const ip = req.headers.get("CF-Connecting-IP") || "";
+  const ua = (req.headers.get("User-Agent") || "").slice(0, 200);
+
+  await env.DB.prepare(
+    `INSERT INTO sessions (token,username,ip,user_agent,created_at,expires_at,last_used) VALUES (?,?,?,?,?,?,?)`
+  ).bind(t, u, ip, ua, n, e, n).run();
+
+  // cleanup async (بدون بلاک کردن response)
+  if (ctx && ctx.waitUntil) {
+    ctx.waitUntil(env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(n).run().catch(() => {}));
+  } else {
+    env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(n).run().catch(() => {});
+  }
+
+  return { token: t, expiresAt: e };
+}
+
+async function chkSess(env, t, ctx) {
+  if (!t) return null;
+  const s = await env.DB.prepare(
+    `SELECT * FROM sessions WHERE token = ? AND expires_at > ?`
+  ).bind(t, Date.now()).first();
+  if (!s) return null;
+
+  // آپدیت last_used رو غیرهمزمان انجام بده
+  const p = env.DB.prepare(`UPDATE sessions SET last_used = ? WHERE token = ?`).bind(Date.now(), t).run();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(p.catch(() => {}));
+  else p.catch(() => {});
+
+  return s;
+}
+
+async function needAdmin(req, env, ctx) {
+  const t = req.headers.get("X-Admin-Token") || (req.headers.get("Authorization") || "").replace("Bearer ", "");
+  const s = await chkSess(env, t, ctx);
+  if (!s) {
+    throw new Response(
+      JSON.stringify({ error: "دسترسی ندارید یا منقضی شده" }),
+      { status: 401, headers: { "Content-Type": "application/json", ...CORS(env) } }
+    );
+  }
+  return s;
+}
+
+/* ---------- Audit Log ---------- */
+async function audit(env, act, tgt, pl, req, ctx) {
+  try {
+    const ip = req?.headers.get("CF-Connecting-IP") || "";
+    const p = env.DB.prepare(
+      `INSERT INTO audit_log (action,target,payload,ip) VALUES (?,?,?,?)`
+    ).bind(act, String(tgt || ""), JSON.stringify(pl || {}).slice(0, 1000), ip).run();
+    if (ctx && ctx.waitUntil) ctx.waitUntil(p.catch(() => {}));
+  } catch (e) {}
+}
+
+/* ---------- Telegram ---------- */
+async function tg(env, txt) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return { ok: false, error: "not_configured" };
+  const ids = String(env.TELEGRAM_CHAT_ID).split(/[,،\s]+/).map(s => s.trim()).filter(Boolean);
+  const results = await Promise.all(ids.map(async (id) => {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: id, text: txt, parse_mode: "HTML", disable_web_page_preview: true }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        return { ok: false, id, error: t };
+      }
+      return { ok: true, id };
+    } catch (e) {
+      return { ok: false, id, error: e.message };
+    }
+  }));
+  return { ok: results.some(r => r.ok), results };
+}
+
+function tgMsg(o, items) {
+  const t = items.map(i =>
+    `• <b>${eh(i.name)}</b>\n   ${eh(i.color)} · ${eh(i.size)} · ×${i.qty}\n   ${fa(i.price * i.qty)} تومان`
+  ).join("\n\n");
+  const d = o.discount > 0 ? `\n🎟 تخفیف${o.couponCode ? ` (${eh(o.couponCode)})` : ""}: −${fa(o.discount)} تومان` : "";
+  const sh = o.shipping > 0 ? `\n🚚 ارسال: ${fa(o.shipping)} تومان` : `\n🚚 ارسال: <b>رایگان</b>`;
+  return `🛒 <b>سفارش جدید G_SHOP</b>\n\n🆔 <code>${o.orderNo}</code>\n👤 ${eh(o.name)}\n📱 <code>${eh(o.phone)}</code>\n📍 ${eh(o.province || "")} - ${eh(o.city || "")}\n📮 کدپستی: <code>${eh(o.postal || "-")}</code>\n🏠 ${eh(o.address || "-")}\n\n━━━━━━━━━━━━━━━━\n\n${t}\n\n━━━━━━━━━━━━━━━━\n\n📦 تعداد: ${o.totalQty} عدد\n💰 جمع: ${fa(o.subtotal)} تومان${d}${sh}\n✅ <b>مبلغ نهایی: ${fa(o.total)} تومان</b>\n\n🕐 ${eh(o.date)}`;
+}
+
+/* ---------- Settings ---------- */
+async function getSettings(env) {
+  try {
+    const { results } = await env.DB.prepare(`SELECT key, value FROM settings`).all();
+    const o = { ...SDEF };
+    for (const r of results) o[r.key] = r.value;
+    return o;
+  } catch {
+    return { ...SDEF };
+  }
+}
+
+async function saveSetting(env, k, v) {
+  await env.DB.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ).bind(k, String(v ?? "")).run();
+}
+
+function calcShip(s, prov, after) {
+  const free = parseInt(s.free_shipping_threshold) || 1000000;
+  if (after >= free) return 0;
+  if (["تهران", "البرز", "قم"].includes(prov)) return parseInt(s.shipping_tehran) || 35000;
+  if (["اصفهان","مرکزی","قزوین","سمنان","مازندران","گلستان","گیلان","زنجان","همدان"].includes(prov))
+    return parseInt(s.shipping_middle) || 45000;
+  return parseInt(s.shipping_other) || 55000;
+}
+
+/* ==========================================================
+   MAIN FETCH
+   ========================================================== */
+export default {
+  async fetch(req, env, ctx) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+    const method = req.method;
+    const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+    const SITE = env.SITE_URL || "https://gshop11.ir";
+
+    if (method === "OPTIONS") return new Response(null, { headers: { ...CORS(env), ...SEC } });
+
+    try {
+      /* ---------- Image proxy (Telegram file_id) ---------- */
+      if (path.startsWith("/api/img/") && method === "GET") {
+        if (!rlimit(`img:${ip}`, 300, 60000).ok) return new Response("Too many", { status: 429 });
+        const fid = decodeURIComponent(path.slice(9));
+        if (!fid || fid.length > 300 || fid.includes("..")) return new Response("Bad", { status: 400 });
+        try {
+          const tr = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fid)}`);
+          const td = await tr.json();
+          if (!td.ok) return new Response("Not found", { status: 404, headers: SEC });
+          const ir = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${td.result.file_path}`);
+          if (!ir.ok) return new Response("Upstream", { status: 502 });
+          return new Response(ir.body, {
+            headers: {
+              "Content-Type": ir.headers.get("Content-Type") || "image/jpeg",
+              "Cache-Control": "public, max-age=31536000, immutable",
+              "Access-Control-Allow-Origin": "*",
+              ...SEC,
+            },
+          });
+        } catch {
+          return new Response("Err", { status: 500 });
+        }
+      }
+
+      /* ---------- Health ---------- */
+      if (path === "/api/health" && method === "GET") {
+        return json({ ok: true, time: new Date().toISOString(), payment: !!env.ZIBAL_MERCHANT }, 200, env);
+      }
+
+      /* ---------- Public: settings ---------- */
+      if (path === "/api/settings" && method === "GET") {
+        const settings = await getSettings(env);
+        return json({ settings }, 200, env);
+      }
+
+      /* ---------- Public: content ---------- */
+      if (path === "/api/content" && method === "GET") {
+        try {
+          const { results } = await env.DB.prepare(`SELECT key, value FROM content`).all();
+          const o = {};
+          for (const r of results) o[r.key] = r.value;
+          return json({ content: o }, 200, env);
+        } catch {
+          return json({ content: {} }, 200, env);
+        }
+      }
+
+      /* ---------- Public: products list ---------- */
+      if (path === "/api/products" && method === "GET") {
+        if (!rlimit(`products:${ip}`, 120, 60000).ok) return json({ error: "تعداد درخواست زیاد" }, 429, env);
+        const { results: pr } = await env.DB.prepare(
+          `SELECT id,name,slug,price,compare_price,image,description,details,tag,category,sort_order,rating_avg,rating_count,active,created_at
+           FROM products WHERE active = 1 ORDER BY sort_order, id`
+        ).all();
+        const { results: va } = await env.DB.prepare(
+          `SELECT product_id,color,size,stock,extra_price FROM variants`
+        ).all();
+        const { results: im } = await env.DB.prepare(
+          `SELECT id,product_id,url,sort_order FROM product_images ORDER BY sort_order`
+        ).all();
+
+        const vm = {}, imm = {};
+        for (const v of va) (vm[v.product_id] ||= []).push(v);
+        for (const i of im) (imm[i.product_id] ||= []).push(i);
+
+        return json({
+          products: pr.map(p => ({
+            ...p,
+            details: p.details ? JSON.parse(p.details) : {},
+            variants: vm[p.id] || [],
+            gallery: imm[p.id] || [],
+          })),
+        }, 200, env);
+      }
+
+      /* ---------- Public: single product ---------- */
+      if (/^\/api\/products\/\d+$/.test(path) && method === "GET") {
+        const id = Number(path.split("/").pop());
+        const p = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND active = 1`).bind(id).first();
+        if (!p) return json({ error: "محصول پیدا نشد" }, 404, env);
+        const { results: v } = await env.DB.prepare(
+          `SELECT color,size,stock,extra_price FROM variants WHERE product_id = ?`
+        ).bind(id).all();
+        const { results: g } = await env.DB.prepare(
+          `SELECT id,url,sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order`
+        ).bind(id).all();
+        return json({
+          product: {
+            ...p,
+            details: p.details ? JSON.parse(p.details) : {},
+            variants: v,
+            gallery: g,
+          },
+        }, 200, env);
+      }
+
+      /* ---------- Public: product reviews ---------- */
+      if (/^\/api\/products\/\d+\/reviews$/.test(path) && method === "GET") {
+        const id = Number(path.split("/")[3]);
+        const { results } = await env.DB.prepare(
+          `SELECT id,name,rating,comment,created_at FROM product_reviews
+           WHERE product_id = ? AND approved = 1 ORDER BY id DESC LIMIT 50`
+        ).bind(id).all();
+        return json({ reviews: results }, 200, env);
+      }
+
+      if (/^\/api\/products\/\d+\/reviews$/.test(path) && method === "POST") {
+        if (!rlimit(`review:${ip}`, 5, 3600000).ok) return json({ error: "تعداد نظرات زیاد است" }, 429, env);
+        const id = Number(path.split("/")[3]);
+        const b = await req.json();
+        const n = san(b.name, 60), c = san(b.comment, 800);
+        const r = Math.max(1, Math.min(5, parseInt(b.rating) || 5));
+        if (!n || !c) return json({ error: "نام و متن نظر الزامی است" }, 400, env);
+        await env.DB.prepare(
+          `INSERT INTO product_reviews (product_id,name,rating,comment) VALUES (?,?,?,?)`
+        ).bind(id, n, r, c).run();
+        return json({ ok: true, message: "نظر ثبت شد" }, 200, env);
+      }
+
+      /* ---------- Public: coupon validate ---------- */
+      if (path === "/api/coupons/validate" && method === "POST") {
+        if (!rlimit(`coupon:${ip}`, 20, 60000).ok) return json({ error: "کمی صبر کنید" }, 429, env);
+        const { code, subtotal } = await req.json();
+        const cl = String(code || "").toUpperCase().trim().replace(/[^A-Z0-9]/g, "").slice(0, 30);
+        if (!cl) return json({ valid: false, error: "کد وارد نشده" }, 400, env);
+        const c = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ? AND active = 1`).bind(cl).first();
+        if (!c) return json({ valid: false, error: "کد تخفیف نامعتبر است" }, 400, env);
+        if (c.max_uses && c.uses >= c.max_uses) return json({ valid: false, error: "ظرفیت این کد تکمیل شده" }, 400, env);
+        if (c.expires_at && new Date(c.expires_at) < new Date()) return json({ valid: false, error: "این کد منقضی شده" }, 400, env);
+        if (c.min_total && Number(subtotal || 0) < c.min_total)
+          return json({ valid: false, error: `حداقل خرید ${fa(c.min_total)} تومان است` }, 400, env);
+        return json({
+          valid: true,
+          coupon: { code: c.code, type: c.type, value: c.value, label: c.label, min_total: c.min_total },
+        }, 200, env);
+      }
+
+      /* ---------- Payment: request ---------- */
+      if (path === "/api/payment/request" && method === "POST") {
+        if (!rlimit(`pay:${ip}`, 10, 60000).ok) return json({ error: "کمی صبر کنید" }, 429, env);
+        if (!env.ZIBAL_MERCHANT) return json({ error: "درگاه پرداخت هنوز فعال نشده" }, 503, env);
+        const b = await req.json();
+        const on = san(b.orderNo, 30).toUpperCase();
+        if (!on) return json({ error: "شماره سفارش الزامی" }, 400, env);
+        const o = await env.DB.prepare(`SELECT * FROM orders WHERE order_no = ?`).bind(on).first();
+        if (!o) return json({ error: "سفارش یافت نشد" }, 404, env);
+        if (o.status !== "pending") return json({ error: "این سفارش قابل پرداخت نیست" }, 400, env);
+
+        const cb = `${url.origin}/api/payment/verify`;
+        const zr = await fetch(ZR, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            merchant: env.ZIBAL_MERCHANT,
+            amount: o.total * 10,
+            callbackUrl: cb,
+            description: `سفارش ${on}`,
+            orderId: on,
+            mobile: o.phone,
+          }),
+        });
+        const zd = await zr.json();
+        if (zd.result !== 100) return json({ error: "خطا در ایجاد پرداخت: " + (zd.message || "کد " + zd.result) }, 500, env);
+
+        const tid = String(zd.trackId);
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO payments (track_id,order_no,amount,status,created_at) VALUES (?,?,?,'pending',datetime('now'))`
+        ).bind(tid, on, o.total).run();
+
+        return json({ ok: true, trackId: tid, paymentUrl: ZS + tid }, 200, env);
+      }
+
+      /* ---------- Payment: verify ---------- */
+      if (path === "/api/payment/verify" && method === "GET") {
+        const tid = url.searchParams.get("trackId");
+        const suc = url.searchParams.get("success");
+        if (!tid) return Response.redirect(`${SITE}/?payment=invalid`, 302);
+
+        const p = await env.DB.prepare(`SELECT * FROM payments WHERE track_id = ?`).bind(tid).first();
+        if (!p) return Response.redirect(`${SITE}/?payment=invalid`, 302);
+        if (p.status === "verified") return Response.redirect(`${SITE}/?payment=success&order=${p.order_no}`, 302);
+
+        if (suc !== "1") {
+          await env.DB.prepare(`UPDATE payments SET status='failed' WHERE track_id = ?`).bind(tid).run();
+          return Response.redirect(`${SITE}/?payment=failed&order=${p.order_no}`, 302);
+        }
+        if (!env.ZIBAL_MERCHANT) return Response.redirect(`${SITE}/?payment=failed&order=${p.order_no}`, 302);
+
+        const vr = await fetch(ZV, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ merchant: env.ZIBAL_MERCHANT, trackId: parseInt(tid) }),
+        });
+        const vd = await vr.json();
+
+        if (vd.result !== 100) {
+          await env.DB.prepare(`UPDATE payments SET status='failed' WHERE track_id = ?`).bind(tid).run();
+          return Response.redirect(`${SITE}/?payment=failed&order=${p.order_no}`, 302);
+        }
+
+        await env.DB.prepare(
+          `UPDATE payments SET status='verified', ref_number = ?, card_number = ?, verified_at = datetime('now') WHERE track_id = ?`
+        ).bind(String(vd.refNumber || ""), String(vd.cardNumber || ""), tid).run();
+
+        await env.DB.prepare(
+          `UPDATE orders SET status='confirmed', updated_at = datetime('now') WHERE order_no = ?`
+        ).bind(p.order_no).run();
+
+        const o = await env.DB.prepare(`SELECT * FROM orders WHERE order_no = ?`).bind(p.order_no).first();
+        if (o) {
+          ctx.waitUntil(tg(env,
+            `✅ <b>پرداخت موفق</b>\n\n🆔 <code>${eh(o.order_no)}</code>\n👤 ${eh(o.name)}\n📱 <code>${eh(o.phone)}</code>\n💳 مبلغ: <b>${fa(o.total)} تومان</b>\n🔢 پیگیری: <code>${eh(vd.refNumber || "-")}</code>\n💳 کارت: <code>${eh(vd.cardNumber || "-")}</code>`
+          ).catch(() => {}));
+        }
+
+        return Response.redirect(`${SITE}/?payment=success&order=${p.order_no}`, 302);
+      }
+
+      /* ---------- Public: create order ---------- */
+      if (path === "/api/orders" && method === "POST") {
+        if (!rlimit(`order:${ip}`, 5, 600000).ok) return json({ error: "تعداد سفارشات زیاد" }, 429, env);
+        const b = await req.json();
+        if (b.website) return json({ ok: true, orderNo: "GS-00000000" }, 200, env);
+
+        const n = san(b.name, 80), ph = san(b.phone, 20), em = san(b.email || "", 100);
+        const prov = san(b.province || "", 40), ct = san(b.city || "", 60);
+        const pc = san(b.postal_code || "", 20), ad = san(b.address || "", 400);
+        const nt = san(b.note || "", 500), cc = san(b.couponCode || "", 30).toUpperCase();
+        const items = b.items;
+
+        if (!n || n.length < 3) return json({ error: "نام و نام خانوادگی را کامل وارد کنید" }, 400, env);
+        if (!ph || !okp(ph)) return json({ error: "شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد" }, 400, env);
+        if (em && !oke(em)) return json({ error: "ایمیل نامعتبر است" }, 400, env);
+        if (!prov || !PROV.includes(prov)) return json({ error: "استان را انتخاب کنید" }, 400, env);
+        if (!ct || ct.length < 2) return json({ error: "نام شهر معتبر نیست" }, 400, env);
+        if (!pc || !okpo(pc)) return json({ error: "کد پستی باید ۱۰ رقم باشد" }, 400, env);
+        if (!ad || ad.length < 10) return json({ error: "آدرس کامل را وارد کنید" }, 400, env);
+        if (!Array.isArray(items) || !items.length) return json({ error: "سبد خرید خالی است" }, 400, env);
+        if (items.length > 50) return json({ error: "تعداد اقلام زیاد" }, 400, env);
+
+        let sub = 0;
+        const prep = [];
+        for (const it of items) {
+          const pid = parseInt(it.productId);
+          const q = Math.max(1, Math.min(20, parseInt(it.qty) || 1));
+          const col = san(it.color, 40), sz = san(it.size, 20);
+          if (!pid || !col || !sz) return json({ error: "قلم نامعتبر" }, 400, env);
+
+          const v = await env.DB.prepare(
+            `SELECT stock FROM variants WHERE product_id = ? AND color = ? AND size = ?`
+          ).bind(pid, col, sz).first();
+          if (!v || v.stock < q) return json({ error: `موجودی «${san(it.name, 60)}» کافی نیست` }, 400, env);
+
+          const p = await env.DB.prepare(`SELECT name,price FROM products WHERE id = ? AND active = 1`).bind(pid).first();
+          if (!p) return json({ error: "محصول نامعتبر" }, 400, env);
+
+          sub += p.price * q;
+          prep.push({ productId: pid, name: p.name, color: col, size: sz, qty: q, price: p.price });
+        }
+
+        let disc = 0, ac = null;
+        if (cc) {
+          const c = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ? AND active = 1`).bind(cc).first();
+          if (
+            c &&
+            (!c.max_uses || c.uses < c.max_uses) &&
+            (!c.expires_at || new Date(c.expires_at) >= new Date()) &&
+            (!c.min_total || sub >= c.min_total)
+          ) {
+            ac = c.code;
+            disc = c.type === "percent" ? Math.round(sub * c.value / 100) : Math.min(c.value, sub);
+          }
+        }
+
+        const settings = await getSettings(env);
+        const after = sub - disc;
+        const ship = calcShip(settings, prov, after);
+        const total = after + ship;
+        const on = "GS-" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 4).toUpperCase();
+        const dt = new Date().toLocaleString("fa-IR");
+
+        const ins = await env.DB.prepare(
+          `INSERT INTO orders (order_no,name,phone,email,address,city,postal_code,note,subtotal,discount,shipping,coupon_code,total,status,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',datetime('now'))`
+        ).bind(on, n, ph, em, `${prov} - ${ct} - ${ad}`, ct, pc, nt, sub, disc, ship, ac, total).run();
+
+        const oid = ins.meta.last_row_id;
+        for (const it of prep) {
+          await env.DB.prepare(
+            `INSERT INTO order_items (order_id,product_id,name,color,size,qty,price) VALUES (?,?,?,?,?,?,?)`
+          ).bind(oid, it.productId, it.name, it.color, it.size, it.qty, it.price).run();
+          await env.DB.prepare(
+            `UPDATE variants SET stock = MAX(0, stock - ?) WHERE product_id = ? AND color = ? AND size = ?`
+          ).bind(it.qty, it.productId, it.color, it.size).run();
+        }
+
+        if (ac) await env.DB.prepare(`UPDATE coupons SET uses = uses + 1 WHERE code = ?`).bind(ac).run();
+
+        ctx.waitUntil(tg(env, tgMsg(
+          {
+            orderNo: on, name: n, phone: ph, province: prov, city: ct,
+            postal: pc, address: ad, subtotal: sub, discount: disc,
+            couponCode: ac, shipping: ship, total,
+            totalQty: prep.reduce((s, i) => s + i.qty, 0), date: dt,
+          }, prep
+        )).catch(() => {}));
+
+        return json({
+          ok: true, orderNo: on, subtotal: sub, discount: disc,
+          shipping: ship, total, items: prep,
+          paymentEnabled: !!env.ZIBAL_MERCHANT,
+        }, 200, env);
+      }
+
+      /* ---------- Public: track order ---------- */
+      if (path === "/api/orders/track" && method === "POST") {
+        if (!rlimit(`track:${ip}`, 20, 60000).ok) return json({ error: "کمی صبر کنید" }, 429, env);
+        const { orderNo, phone } = await req.json();
+        const cn = san(orderNo, 30).toUpperCase();
+        const cp = san(phone, 20);
+        if (!cn || !cp) return json({ error: "اطلاعات ناقص" }, 400, env);
+
+        const o = await env.DB.prepare(`SELECT * FROM orders WHERE order_no = ?`).bind(cn).first();
+        if (!o) return json({ error: "سفارش یافت نشد" }, 404, env);
+
+        const da = String(o.phone).replace(/\D/g, "");
+        const db = String(cp).replace(/\D/g, "");
+        if (!eq(da, db)) return json({ error: "موبایل مطابقت ندارد" }, 403, env);
+
+        const { results: items } = await env.DB.prepare(
+          `SELECT name,color,size,qty,price FROM order_items WHERE order_id = ?`
+        ).bind(o.id).all();
+
+        const pay = await env.DB.prepare(
+          `SELECT status,ref_number FROM payments WHERE order_no = ? ORDER BY created_at DESC LIMIT 1`
+        ).bind(cn).first();
+
+        return json({
+          order: {
+            orderNo: o.order_no, name: o.name, status: o.status,
+            total: o.total, subtotal: o.subtotal, discount: o.discount,
+            shipping: o.shipping, tracking_no: o.tracking_no,
+            created_at: o.created_at, updated_at: o.updated_at,
+            items, payment: pay || null,
+            paymentEnabled: !!env.ZIBAL_MERCHANT,
+          },
+        }, 200, env);
+      }
+
+      /* ---------- Public: stock alert ---------- */
+      if (path === "/api/stock-alert" && method === "POST") {
+        if (!rlimit(`alert:${ip}`, 10, 3600000).ok) return json({ error: "زیاد" }, 429, env);
+        const { productId, color, size, phone } = await req.json();
+        const cp = san(phone, 20);
+        if (!okp(cp)) return json({ error: "شماره نامعتبر" }, 400, env);
+        await env.DB.prepare(
+          `INSERT INTO stock_alerts (product_id,color,size,phone) VALUES (?,?,?,?)`
+        ).bind(parseInt(productId), san(color, 40), san(size, 20), cp).run();
+        return json({ ok: true }, 200, env);
+      }
+
+      /* ---------- Public: subscribe ---------- */
+      if (path === "/api/subscribe" && method === "POST") {
+        if (!rlimit(`sub:${ip}`, 5, 3600000).ok) return json({ error: "زیاد" }, 429, env);
+        const { email } = await req.json();
+        const cl = san(email, 120).toLowerCase();
+        if (!oke(cl)) return json({ error: "ایمیل نامعتبر" }, 400, env);
+        await env.DB.prepare(`INSERT OR IGNORE INTO subscribers (email) VALUES (?)`).bind(cl).run();
+        return json({ ok: true }, 200, env);
+      }
+
+      /* ---------- Admin: login ---------- */
+      if (path === "/api/admin/login" && method === "POST") {
+        const r = rlimit(`login:${ip}`, 5, 600000);
+        if (!r.ok) return json({ error: "تلاش زیاد. ۱۰ دقیقه صبر کنید." }, 429, env);
+        const { username, password } = await req.json();
+        const u = san(username || "", 40);
+        const p = String(password || "");
+        const eu = env.ADMIN_USERNAME || "admin";
+        const ep = env.ADMIN_PASSWORD;
+        if (!ep) return json({ error: "ADMIN_PASSWORD تنظیم نشده" }, 500, env);
+        if (!eq(u, eu) || !eq(p, ep)) {
+          ctx.waitUntil(audit(env, "login.failed", u, { ip }, req, ctx));
+          return json({ error: "نام کاربری یا رمز اشتباه" }, 401, env);
+        }
+        const s = await mkSess(env, u, req, ctx);
+        ctx.waitUntil(audit(env, "login.success", u, {}, req, ctx));
+        return json({ token: s.token, expiresAt: s.expiresAt }, 200, env);
+      }
+
+      /* ---------- Admin: logout ---------- */
+      if (path === "/api/admin/logout" && method === "POST") {
+        const t = req.headers.get("X-Admin-Token");
+        if (t) await env.DB.prepare(`DELETE FROM sessions WHERE token = ?`).bind(t).run();
+        return json({ ok: true }, 200, env);
+      }
+
+      /* ============================================
+         ADMIN (protected)
+         ============================================ */
+      if (path.startsWith("/api/admin/")) {
+        await needAdmin(req, env, ctx);
+
+        /* ---------- Admin: /me (light verify) ---------- */
+        if (path === "/api/admin/me" && method === "GET") {
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: upload ---------- */
+        if (path === "/api/admin/upload" && method === "POST") {
+          const r = rlimit(`upload:${ip}`, 30, 3600000);
+          if (!r.ok) return json({ error: "محدودیت آپلود" }, 429, env);
+
+          let f;
+          try { f = await req.formData(); } catch { return json({ error: "فرمت نامعتبر" }, 400, env); }
+          const file = f.get("file");
+          if (!file || typeof file === "string") return json({ error: "فایلی ارسال نشد" }, 400, env);
+          if (file.size > 5 * 1024 * 1024) return json({ error: "حجم بیش از ۵ مگابایت" }, 400, env);
+
+          const al = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+          if (!al.includes(file.type)) return json({ error: "فرمت پشتیبانی نمی‌شود" }, 400, env);
+
+          const tf = new FormData();
+          tf.append("chat_id", String(env.TELEGRAM_CHAT_ID).split(/[,،\s]+/)[0].trim());
+          tf.append("document", file, file.name || "image.jpg");
+
+          const tr = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendDocument`, {
+            method: "POST", body: tf,
+          });
+          const td = await tr.json();
+          if (!td.ok) return json({ error: "خطا در آپلود: " + (td.description || "") }, 500, env);
+
+          const fid = td.result.document.file_id;
+          return json({ ok: true, url: `${url.origin}/api/img/${fid}`, fileId: fid }, 200, env);
+        }
+
+        /* ---------- Admin: settings ---------- */
+        if (path === "/api/admin/settings" && method === "GET") {
+          const settings = await getSettings(env);
+          return json({ settings }, 200, env);
+        }
+
+        if (path === "/api/admin/settings" && method === "POST") {
+          const b = await req.json();
+          const allowed = Object.keys(SDEF);
+          const saved = {};
+          for (const k of allowed) {
+            if (b[k] !== undefined) {
+              const v = String(b[k] ?? "").slice(0, 5000);
+              await saveSetting(env, k, v);
+              saved[k] = v;
+            }
+          }
+          ctx.waitUntil(audit(env, "settings.save", "all", { keys: Object.keys(saved) }, req, ctx));
+          return json({ ok: true, settings: saved }, 200, env);
+        }
+
+        /* ---------- Admin: content ---------- */
+        if (path === "/api/admin/content" && method === "GET") {
+          const { results } = await env.DB.prepare(`SELECT key, value FROM content`).all();
+          const o = {};
+          for (const r of results) o[r.key] = r.value;
+          return json({ content: o }, 200, env);
+        }
+
+        if (path === "/api/admin/content" && method === "POST") {
+          const b = await req.json();
+          const sv = {};
+          for (const [k, v] of Object.entries(b)) {
+            if (typeof k !== "string" || k.length > 60) continue;
+            const val = String(v ?? "").slice(0, 2000);
+            await env.DB.prepare(
+              `INSERT INTO content (key, value, updated_at) VALUES (?, ?, datetime('now'))
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+            ).bind(k, val).run();
+            sv[k] = val;
+          }
+          ctx.waitUntil(audit(env, "content.save", "all", { keys: Object.keys(sv) }, req, ctx));
+          return json({ ok: true, content: sv }, 200, env);
+        }
+
+        /* ---------- Admin: create product ---------- */
+        if (path === "/api/admin/products" && method === "POST") {
+          const b = await req.json();
+          const n = san(b.name, 120);
+          const p = Math.max(0, parseInt(b.price) || 0);
+          const cp = b.compare_price ? Math.max(0, parseInt(b.compare_price)) : null;
+          const d = san(b.description || "", 1000);
+          const t = san(b.tag || "", 20);
+          const c = san(b.category || "tshirt", 30);
+          const so = parseInt(b.sort_order) || 0;
+          const dt = b.details && typeof b.details === "object" ? JSON.stringify(b.details).slice(0, 2000) : null;
+
+          const imgs = Array.isArray(b.images)
+            ? b.images.map(x => san(x, 500)).filter(Boolean).slice(0, 5)
+            : [];
+          const i = imgs[0] || san(b.image || "", 500);
+
+          if (!n || !p || !i) return json({ error: "نام، قیمت و تصویر الزامی" }, 400, env);
+
+          const sl = n.toLowerCase().replace(/\s+/g, "-").replace(/[^\w\-آ-ی]/g, "").slice(0, 60) || "product-" + Date.now();
+
+          const r = await env.DB.prepare(
+            `INSERT INTO products (name,slug,price,compare_price,image,description,details,tag,category,sort_order)
+             VALUES (?,?,?,?,?,?,?,?,?,?)`
+          ).bind(n, sl, p, cp, i, d, dt, t || null, c, so).run();
+          const pid = r.meta.last_row_id;
+
+          for (let gi = 1; gi < imgs.length; gi++) {
+            await env.DB.prepare(
+              `INSERT INTO product_images (product_id,url,sort_order) VALUES (?,?,?)`
+            ).bind(pid, imgs[gi], gi).run();
+          }
+
+          const vv = Array.isArray(b.variants) ? b.variants : [];
+          for (const v of vv) {
+            const col = san(v.color, 40), sz = san(v.size, 20);
+            const st = Math.max(0, parseInt(v.stock) || 0);
+            if (col && sz) {
+              await env.DB.prepare(
+                `INSERT INTO variants (product_id,color,size,stock) VALUES (?,?,?,?)`
+              ).bind(pid, col, sz, st).run();
+            }
+          }
+
+          ctx.waitUntil(audit(env, "product.create", pid, { name: n, price: p }, req, ctx));
+          return json({ ok: true, id: pid }, 200, env);
+        }
+
+        /* ---------- Admin: update product (با sync واریانت‌ها) ---------- */
+        if (/^\/api\/admin\/products\/\d+$/.test(path) && method === "PATCH") {
+          const pid = Number(path.split("/").pop());
+          const b = await req.json();
+
+          const u = [], bd = [];
+          if (b.name !== undefined) { u.push("name = ?"); bd.push(san(b.name, 120)); }
+          if (b.price !== undefined) { u.push("price = ?"); bd.push(Math.max(0, parseInt(b.price) || 0)); }
+          if (b.compare_price !== undefined) { u.push("compare_price = ?"); bd.push(b.compare_price ? Math.max(0, parseInt(b.compare_price)) : null); }
+          if (b.description !== undefined) { u.push("description = ?"); bd.push(san(b.description, 1000)); }
+          if (b.tag !== undefined) { u.push("tag = ?"); bd.push(san(b.tag, 20) || null); }
+          if (b.category !== undefined) { u.push("category = ?"); bd.push(san(b.category, 30)); }
+          if (b.image !== undefined) { u.push("image = ?"); bd.push(san(b.image, 500)); }
+          if (b.active !== undefined) { u.push("active = ?"); bd.push(b.active ? 1 : 0); }
+          if (b.sort_order !== undefined) { u.push("sort_order = ?"); bd.push(parseInt(b.sort_order) || 0); }
+          if (b.details !== undefined) {
+            u.push("details = ?");
+            bd.push(b.details && typeof b.details === "object" ? JSON.stringify(b.details).slice(0, 2000) : null);
+          }
+
+          if (u.length) {
+            bd.push(pid);
+            await env.DB.prepare(`UPDATE products SET ${u.join(", ")} WHERE id = ?`).bind(...bd).run();
+          }
+
+          /* ─── Sync واریانت‌ها (add/update/delete — diff-based) ─── */
+          if (Array.isArray(b.variants)) {
+            const { results: existing } = await env.DB.prepare(
+              `SELECT id, color, size FROM variants WHERE product_id = ?`
+            ).bind(pid).all();
+
+            const existingMap = new Map();
+            for (const v of existing) existingMap.set(`${v.color}|${v.size}`, v);
+
+            const incomingKeys = new Set();
+
+            for (const v of b.variants) {
+              const col = san(v.color, 40);
+              const sz  = san(v.size, 20);
+              const st  = Math.max(0, parseInt(v.stock) || 0);
+              if (!col || !sz) continue;
+
+              const key = `${col}|${sz}`;
+              incomingKeys.add(key);
+              const ex = existingMap.get(key);
+
+              if (ex) {
+                // موجود → فقط stock آپدیت
+                await env.DB.prepare(`UPDATE variants SET stock = ? WHERE id = ?`).bind(st, ex.id).run();
+              } else {
+                // جدید → insert
+                await env.DB.prepare(
+                  `INSERT INTO variants (product_id, color, size, stock) VALUES (?,?,?,?)`
+                ).bind(pid, col, sz, st).run();
+              }
+            }
+
+            // حذف واریانت‌هایی که توی آرایه جدید نیستن
+            for (const [key, ex] of existingMap) {
+              if (!incomingKeys.has(key)) {
+                await env.DB.prepare(`DELETE FROM variants WHERE id = ?`).bind(ex.id).run();
+              }
+            }
+          }
+
+          ctx.waitUntil(audit(env, "product.update", pid, b, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: delete product ---------- */
+        if (/^\/api\/admin\/products\/\d+$/.test(path) && method === "DELETE") {
+          const pid = Number(path.split("/").pop());
+          await env.DB.prepare(`DELETE FROM variants WHERE product_id = ?`).bind(pid).run();
+          await env.DB.prepare(`DELETE FROM product_images WHERE product_id = ?`).bind(pid).run();
+          await env.DB.prepare(`DELETE FROM product_reviews WHERE product_id = ?`).bind(pid).run();
+          await env.DB.prepare(`DELETE FROM products WHERE id = ?`).bind(pid).run();
+          ctx.waitUntil(audit(env, "product.delete", pid, {}, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: change product image ---------- */
+        if (path === "/api/admin/products/image" && method === "PATCH") {
+          const { productId, imageUrl } = await req.json();
+          if (!productId || !imageUrl) return json({ error: "ناقص" }, 400, env);
+          await env.DB.prepare(`UPDATE products SET image = ? WHERE id = ?`)
+            .bind(san(imageUrl, 500), productId).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: add gallery image ---------- */
+        if (/^\/api\/admin\/products\/\d+\/gallery$/.test(path) && method === "POST") {
+          const pid = Number(path.split("/")[4]);
+          const { url: iu } = await req.json();
+          if (!iu) return json({ error: "URL الزامی" }, 400, env);
+          const m = await env.DB.prepare(
+            `SELECT COALESCE(MAX(sort_order), -1) AS m FROM product_images WHERE product_id = ?`
+          ).bind(pid).first();
+          await env.DB.prepare(
+            `INSERT INTO product_images (product_id,url,sort_order) VALUES (?,?,?)`
+          ).bind(pid, san(iu, 500), m.m + 1).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: delete gallery image ---------- */
+        if (/^\/api\/admin\/gallery\/\d+$/.test(path) && method === "DELETE") {
+          const iid = Number(path.split("/").pop());
+          await env.DB.prepare(`DELETE FROM product_images WHERE id = ?`).bind(iid).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: stats ---------- */
+        if (path === "/api/admin/stats" && method === "GET") {
+          const to = (await env.DB.prepare(`SELECT COUNT(*) AS c FROM orders`).first()).c;
+          const rv = (await env.DB.prepare(`SELECT COALESCE(SUM(total),0) AS s FROM orders WHERE status != 'cancelled'`).first()).s;
+          const pd = (await env.DB.prepare(`SELECT COUNT(*) AS c FROM orders WHERE status = 'pending'`).first()).c;
+          const st = (await env.DB.prepare(`SELECT COALESCE(SUM(stock),0) AS s FROM variants`).first()).s;
+          const ls = (await env.DB.prepare(`SELECT COUNT(*) AS c FROM variants WHERE stock > 0 AND stock <= ?`).bind(LOW).first()).c;
+          const { results: sc } = await env.DB.prepare(
+            `SELECT date(created_at) AS d, COALESCE(SUM(total),0) AS total, COUNT(*) AS cnt
+             FROM orders WHERE created_at >= datetime('now', '-7 days') AND status != 'cancelled'
+             GROUP BY d ORDER BY d`
+          ).all();
+          const ro = (await env.DB.prepare(
+            `SELECT order_no,name,total,status,created_at FROM orders ORDER BY id DESC LIMIT 5`
+          ).all()).results;
+          return json({
+            totalOrders: to, revenue: rv, pending: pd, stock: st, lowStock: ls,
+            salesChart: sc, recentOrders: ro,
+          }, 200, env);
+        }
+
+        /* ---------- Admin: orders list (بهینه‌شده) ---------- */
+        if (path === "/api/admin/orders" && method === "GET") {
+          const s = url.searchParams.get("status");
+          const q = san(url.searchParams.get("q") || "", 50);
+
+          let qy = `SELECT * FROM orders`;
+          const bd = [], wh = [];
+          if (s && STATUSES.includes(s)) { wh.push(`status = ?`); bd.push(s); }
+          if (q) {
+            wh.push(`(order_no LIKE ? OR name LIKE ? OR phone LIKE ?)`);
+            bd.push(`%${q}%`, `%${q}%`, `%${q}%`);
+          }
+          if (wh.length) qy += ` WHERE ` + wh.join(" AND ");
+          qy += ` ORDER BY id DESC LIMIT 500`;
+
+          const { results: os } = await env.DB.prepare(qy).bind(...bd).all();
+          const orderIds = os.map(o => o.id);
+          const orderNos = os.map(o => o.order_no);
+
+          // بهینه: فقط برای orderهایی که برمی‌گردن کوئری بزن
+          const its = orderIds.length
+            ? (await env.DB.prepare(
+                `SELECT * FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")})`
+              ).bind(...orderIds).all()).results
+            : [];
+          const nts = orderIds.length
+            ? (await env.DB.prepare(
+                `SELECT * FROM order_notes WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id DESC`
+              ).bind(...orderIds).all()).results
+            : [];
+          const pys = orderNos.length
+            ? (await env.DB.prepare(
+                `SELECT * FROM payments WHERE order_no IN (${orderNos.map(() => "?").join(",")})`
+              ).bind(...orderNos).all()).results
+            : [];
+
+          const im = {}, nm = {}, pm = {};
+          for (const i of its) (im[i.order_id] ||= []).push(i);
+          for (const n of nts) (nm[n.order_id] ||= []).push(n);
+          for (const p of pys) pm[p.order_no] = p;
+
+          return json({
+            orders: os.map(o => ({
+              ...o,
+              items: im[o.id] || [],
+              notes: nm[o.id] || [],
+              payment: pm[o.order_no] || null,
+            })),
+          }, 200, env);
+        }
+
+        /* ---------- Admin: orders CSV ---------- */
+        if (path === "/api/admin/orders.csv" && method === "GET") {
+          const { results: os } = await env.DB.prepare(`SELECT * FROM orders ORDER BY id DESC`).all();
+          const es = (s) => {
+            let str = String(s ?? "");
+            if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
+            return `"${str.replace(/"/g, '""')}"`;
+          };
+          const ln = ["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"];
+
+          // یه‌بار همه items رو بگیر
+          const { results: allItems } = await env.DB.prepare(
+            `SELECT order_id, name, color, size, qty FROM order_items`
+          ).all();
+          const im = {};
+          for (const i of allItems) (im[i.order_id] ||= []).push(i);
+
+          for (const o of os) {
+            const its = im[o.id] || [];
+            const it = its.map(i => `${i.name}/${i.color}/${i.size} x${i.qty}`).join(" | ");
+            ln.push([
+              es(o.order_no), es(o.name), es(o.phone), es(o.city || ""), es(o.address || ""),
+              es(o.status), o.subtotal, o.discount, o.shipping || 0, o.total,
+              es(o.created_at), es(it),
+            ].join(","));
+          }
+          const csv = "\uFEFF" + ln.join("\n");
+          return new Response(csv, {
+            headers: {
+              "Content-Type": "text/csv; charset=utf-8",
+              "Content-Disposition": `attachment; filename="gshop-orders-${Date.now()}.csv"`,
+              ...SEC, ...CORS(env),
+            },
+          });
+        }
+
+        /* ---------- Admin: update order status ---------- */
+        if (/^\/api\/admin\/orders\/[^/]+$/.test(path) && method === "PATCH") {
+          const on = decodeURIComponent(path.split("/").pop());
+          const { status, tracking_no } = await req.json();
+          if (!STATUSES.includes(status)) return json({ error: "وضعیت نامعتبر" }, 400, env);
+          const old = await env.DB.prepare(`SELECT id,status FROM orders WHERE order_no = ?`).bind(on).first();
+          if (!old) return json({ error: "سفارش یافت نشد" }, 404, env);
+
+          // اگه لغو شد، موجودی رو برگردون
+          if (status === "cancelled" && old.status !== "cancelled") {
+            const { results: its } = await env.DB.prepare(
+              `SELECT product_id,color,size,qty FROM order_items WHERE order_id = ?`
+            ).bind(old.id).all();
+            for (const i of its) {
+              await env.DB.prepare(
+                `UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?`
+              ).bind(i.qty, i.product_id, i.color, i.size).run();
+            }
+          }
+
+          await env.DB.prepare(
+            `UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ?`
+          ).bind(status, tracking_no ? san(tracking_no, 50) : null, on).run();
+
+          ctx.waitUntil(audit(env, "order.status", on, { status, tracking_no }, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: add order note ---------- */
+        if (/^\/api\/admin\/orders\/[^/]+\/notes$/.test(path) && method === "POST") {
+          const on = decodeURIComponent(path.split("/")[4]);
+          const { note } = await req.json();
+          const cl = san(note, 500);
+          if (!cl) return json({ error: "متن الزامی" }, 400, env);
+          const o = await env.DB.prepare(`SELECT id FROM orders WHERE order_no = ?`).bind(on).first();
+          if (!o) return json({ error: "سفارش یافت نشد" }, 404, env);
+          await env.DB.prepare(`INSERT INTO order_notes (order_id,note) VALUES (?,?)`).bind(o.id, cl).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: delete order ---------- */
+        if (/^\/api\/admin\/orders\/[^/]+$/.test(path) && method === "DELETE") {
+          const on = decodeURIComponent(path.split("/").pop());
+          const o = await env.DB.prepare(`SELECT id FROM orders WHERE order_no = ?`).bind(on).first();
+          if (o) {
+            await env.DB.prepare(`DELETE FROM order_items WHERE order_id = ?`).bind(o.id).run();
+            await env.DB.prepare(`DELETE FROM order_notes WHERE order_id = ?`).bind(o.id).run();
+            await env.DB.prepare(`DELETE FROM orders WHERE id = ?`).bind(o.id).run();
+          }
+          await env.DB.prepare(`DELETE FROM payments WHERE order_no = ?`).bind(on).run();
+          ctx.waitUntil(audit(env, "order.delete", on, {}, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: stock delta ---------- */
+        if (path === "/api/admin/stock" && method === "PATCH") {
+          const { productId, color, size, delta } = await req.json();
+          if (typeof delta !== "number" || Math.abs(delta) > 10000) {
+            return json({ error: "delta نامعتبر" }, 400, env);
+          }
+          await env.DB.prepare(
+            `UPDATE variants SET stock = MAX(0, stock + ?) WHERE product_id = ? AND color = ? AND size = ?`
+          ).bind(delta, productId, color, size).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: low stock ---------- */
+        if (path === "/api/admin/low-stock" && method === "GET") {
+          const { results } = await env.DB.prepare(
+            `SELECT v.*, p.name AS product_name FROM variants v
+             JOIN products p ON p.id = v.product_id
+             WHERE v.stock <= ? ORDER BY v.stock ASC`
+          ).bind(LOW).all();
+          return json({ items: results }, 200, env);
+        }
+
+        /* ---------- Admin: coupons list ---------- */
+        if (path === "/api/admin/coupons" && method === "GET") {
+          const { results } = await env.DB.prepare(`SELECT * FROM coupons ORDER BY created_at DESC`).all();
+          return json({ coupons: results }, 200, env);
+        }
+
+        /* ---------- Admin: create coupon ---------- */
+        if (path === "/api/admin/coupons" && method === "POST") {
+          const b = await req.json();
+          const c = san(b.code, 30).toUpperCase().replace(/[^A-Z0-9]/g, "");
+          const t = b.type === "fixed" ? "fixed" : "percent";
+          const v = Math.max(1, parseInt(b.value) || 0);
+          const l = san(b.label || "", 120);
+          const mu = b.max_uses ? Math.max(1, parseInt(b.max_uses)) : null;
+          const mt = b.min_total ? Math.max(0, parseInt(b.min_total)) : 0;
+          const ex = b.expires_at ? san(b.expires_at, 30) : null;
+          if (!c || !v) return json({ error: "کد و مقدار الزامی" }, 400, env);
+          try {
+            await env.DB.prepare(
+              `INSERT INTO coupons (code,type,value,label,max_uses,min_total,expires_at) VALUES (?,?,?,?,?,?,?)`
+            ).bind(c, t, v, l, mu, mt, ex).run();
+          } catch {
+            return json({ error: "این کد وجود دارد" }, 400, env);
+          }
+          ctx.waitUntil(audit(env, "coupon.create", c, { t, v }, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: delete coupon ---------- */
+        if (/^\/api\/admin\/coupons\/[A-Z0-9]+$/.test(path) && method === "DELETE") {
+          const c = path.split("/").pop();
+          await env.DB.prepare(`DELETE FROM coupons WHERE code = ?`).bind(c).run();
+          ctx.waitUntil(audit(env, "coupon.delete", c, {}, req, ctx));
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: toggle coupon ---------- */
+        if (/^\/api\/admin\/coupons\/[A-Z0-9]+$/.test(path) && method === "PATCH") {
+          const c = path.split("/").pop();
+          const { active } = await req.json();
+          await env.DB.prepare(`UPDATE coupons SET active = ? WHERE code = ?`).bind(active ? 1 : 0, c).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: reviews list ---------- */
+        if (path === "/api/admin/reviews" && method === "GET") {
+          const { results } = await env.DB.prepare(
+            `SELECT r.*, p.name AS product_name FROM product_reviews r
+             JOIN products p ON p.id = r.product_id
+             ORDER BY r.id DESC LIMIT 200`
+          ).all();
+          return json({ reviews: results }, 200, env);
+        }
+
+        /* ---------- Admin: approve review ---------- */
+        if (/^\/api\/admin\/reviews\/\d+$/.test(path) && method === "PATCH") {
+          const rid = Number(path.split("/").pop());
+          const { approved } = await req.json();
+          await env.DB.prepare(`UPDATE product_reviews SET approved = ? WHERE id = ?`)
+            .bind(approved ? 1 : 0, rid).run();
+          const rv = await env.DB.prepare(`SELECT product_id FROM product_reviews WHERE id = ?`).bind(rid).first();
+          if (rv) {
+            await env.DB.prepare(
+              `UPDATE products SET
+                rating_avg = COALESCE((SELECT AVG(rating) FROM product_reviews WHERE product_id = ? AND approved = 1), 0),
+                rating_count = (SELECT COUNT(*) FROM product_reviews WHERE product_id = ? AND approved = 1)
+               WHERE id = ?`
+            ).bind(rv.product_id, rv.product_id, rv.product_id).run();
+          }
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: delete review ---------- */
+        if (/^\/api\/admin\/reviews\/\d+$/.test(path) && method === "DELETE") {
+          const rid = Number(path.split("/").pop());
+          await env.DB.prepare(`DELETE FROM product_reviews WHERE id = ?`).bind(rid).run();
+          return json({ ok: true }, 200, env);
+        }
+
+        /* ---------- Admin: payments list ---------- */
+        if (path === "/api/admin/payments" && method === "GET") {
+          const { results } = await env.DB.prepare(
+            `SELECT * FROM payments ORDER BY created_at DESC LIMIT 200`
+          ).all();
+          return json({ payments: results }, 200, env);
+        }
+
+        /* ---------- Admin: audit log ---------- */
+        if (path === "/api/admin/audit" && method === "GET") {
+          const { results } = await env.DB.prepare(
+            `SELECT * FROM audit_log ORDER BY id DESC LIMIT 100`
+          ).all();
+          return json({ logs: results }, 200, env);
+        }
+
+        /* ---------- Admin: telegram test ---------- */
+        if (path === "/api/admin/telegram-test" && method === "POST") {
+          const r = await tg(env,
+            "🧪 <b>تست G_SHOP</b>\n\nربات وصل شد ✓\n\n🕐 " + new Date().toLocaleString("fa-IR")
+          );
+          if (r.ok) {
+            const cnt = r.results?.filter(x => x.ok).length || 0;
+            return json({ ok: true, sent: cnt, total: r.results?.length || 0 }, 200, env);
+          }
+          return json({ error: "ارسال ناموفق: " + (r.results?.[0]?.error || "unknown") }, 500, env);
+        }
+      }
+
+      /* ---------- 404 ---------- */
+      return json({ error: "یافت نشد" }, 404, env);
+
+    } catch (e) {
+      if (e instanceof Response) return e;
+      return json({ error: "خطای سرور: " + e.message }, 500, env);
+    }
+  },
+};
