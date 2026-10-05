@@ -6,8 +6,8 @@
 
 const K_ADMIN = window.GSHOP_KEYS || {};
 const ADMIN_TOKEN_KEY = K_ADMIN.ADMIN_TOKEN || 'gshop_admin_token';
-const CONTENT_CACHE_KEY = K_ADMIN.CONTENT_CACHE || 'gshop_content_cache_v7';
-const SETTINGS_CACHE_KEY = K_ADMIN.SETTINGS_CACHE || 'gshop_settings_cache_v7';
+const ADMIN_CONTENT_CACHE_KEY = K_ADMIN.CONTENT_CACHE || 'gshop_content_cache_v7';
+const ADMIN_SETTINGS_CACHE_KEY = K_ADMIN.SETTINGS_CACHE || 'gshop_settings_cache_v7';
 
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
 
