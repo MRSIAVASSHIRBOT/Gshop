@@ -597,3 +597,28 @@ footer{padding:80px 0 40px;border-top:1px solid var(--line);position:relative;z-
 @media (max-width: 700px) {
   .back-top.shifted { bottom: 90px; }
 }
+
+/* Enamad Trust Seal */
+.foot__enamad {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px 0 20px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.foot__enamad a {
+  display: inline-block;
+  transition: transform .3s var(--ease), filter .3s var(--ease);
+  filter: grayscale(20%);
+}
+.foot__enamad a:hover {
+  transform: scale(1.08);
+  filter: grayscale(0%);
+}
+.foot__enamad img {
+  display: block;
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+}
