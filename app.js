@@ -9,7 +9,7 @@ const K = window.GSHOP_KEYS;
 
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:8787'
-  : 'https://gahop.mrsiavashirbot.workers.dev';
+  : '';
 
 const SUPPORT_TG   = 'Alisdt98';
 const PHONE        = '09120507960';
