@@ -1871,6 +1871,9 @@ function showSuccess(order, info) {
   const itemsText = state.cart.map(i => `• ${i.name} | ${i.color} | ${i.size} | ×${i.qty} | ${fmt(i.price * i.qty)}`).join('\n');
   const msg = `🛒 سفارش جدید G_SHOP\n\n🆔 ${order.orderNo}\n👤 ${info.name}\n📱 ${info.phone}\n📍 ${info.province} - ${info.city}\n📮 ${info.postal}\n🏠 ${info.address}\n\n${itemsText}\n\n💰 جمع: ${fmt(order.subtotal)}\n${order.discount ? `🎟 تخفیف: − ${fmt(order.discount)}\n` : ''}${order.shipping ? `🚚 ارسال: ${fmt(order.shipping)}\n` : '🚚 ارسال: رایگان\n'}✅ نهایی: ${fmt(order.total)}`;
 
+  // آیا درگاه پرداخت فعاله؟
+  const canPay = Boolean(order.paymentEnabled && order.orderNo && !order.orderNo.includes('000000'));
+
   box.innerHTML = `
     <div class="success">
       <div class="success__icon">✓</div>
@@ -1886,14 +1889,43 @@ function showSuccess(order, info) {
         <div class="row"><span>ارسال</span><b style="color:${order.shipping ? 'var(--text)' : 'var(--green)'}">${order.shipping ? fmt(order.shipping) : 'رایگان ✓'}</b></div>
         <div class="row total"><span>مبلغ نهایی</span><b>${fmt(order.total)}</b></div>
       </div>
-      <p style="color:var(--dim);font-size:12.5px;margin-bottom:18px">برای نهایی‌سازی، سفارش را به پشتیبانی ارسال کنید.</p>
+      ${canPay
+        ? `<p style="color:var(--lime);font-size:13px;margin-bottom:14px;line-height:1.7">💳 برای تکمیل سفارش، مبلغ را آنلاین پرداخت کنید. بعد از پرداخت، سفارش تایید می‌شود.</p>
+           <button type="button" class="checkout-btn" id="payNow" style="margin-bottom:10px;background:var(--lime);color:var(--ink);font-weight:700">💳 پرداخت آنلاین ${fmt(order.total)}</button>`
+        : `<p style="color:var(--dim);font-size:12.5px;margin-bottom:14px;line-height:1.7">برای نهایی‌سازی، سفارش را به پشتیبانی ارسال کنید.</p>`
+      }
       <div style="display:flex;flex-direction:column;gap:10px">
-        <a class="checkout-btn" style="text-align:center;display:block;text-decoration:none" href="https://t.me/${SUPPORT_TG}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">ارسال به تلگرام پشتیبانی</a>
-        <button type="button" class="checkout-btn" id="copyMsg" style="background:var(--ink-3);color:var(--text)">کپی متن سفارش</button>
+        <a class="checkout-btn" style="text-align:center;display:block;text-decoration:none;background:var(--ink-3);color:var(--text)" href="https://t.me/${SUPPORT_TG}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">ارسال به تلگرام پشتیبانی</a>
+        <button type="button" class="checkout-btn" id="copyMsg" style="background:transparent;border:1px solid var(--line-2);color:var(--text)">کپی متن سفارش</button>
         <button type="button" class="checkout-btn" id="closeSuccess" style="background:transparent;border:1px solid var(--line-2);color:var(--text)">بستن</button>
       </div>
     </div>
   `;
+
+  if ($('#payNow')) {
+    $('#payNow').onclick = async () => {
+      const btn = $('#payNow');
+      btn.disabled = true;
+      btn.textContent = '⏳ در حال اتصال به درگاه...';
+      try {
+        const r = await api('/api/payment/request', {
+          method: 'POST',
+          body: JSON.stringify({ orderNo: order.orderNo }),
+        });
+        if (r.paymentUrl) {
+          toast('در حال انتقال به درگاه...');
+          setTimeout(() => { window.location.href = r.paymentUrl; }, 500);
+        } else {
+          throw new Error(r.error || 'خطا در ایجاد پرداخت');
+        }
+      } catch (e) {
+        toast(e.message, 'err', 5000);
+        btn.disabled = false;
+        btn.textContent = `💳 پرداخت آنلاین ${fmt(order.total)}`;
+      }
+    };
+  }
+
   $('#copyMsg').onclick = async () => {
     try { await navigator.clipboard.writeText(msg); toast('متن کپی شد ✓'); }
     catch { toast('کپی نشد', 'err'); }
