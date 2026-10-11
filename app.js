@@ -2254,6 +2254,45 @@ function bindGlobal() {
   }
 })();
 
+// ---------- 3D Tilt for Product Cards ----------
+(function initTilt3D() {
+  let currentCard = null;
+  let rafId = null;
+  
+  document.addEventListener('mousemove', (e) => {
+    const card = e.target.closest('.pcard');
+    if (!card) {
+      if (currentCard) { currentCard.style.transform = ''; currentCard = null; }
+      return;
+    }
+    if (currentCard !== card) currentCard = card;
+    
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const px = (x / rect.width) * 100;
+      const py = (y / rect.height) * 100;
+      
+      // spotlight position
+      card.style.setProperty('--mx', px + '%');
+      card.style.setProperty('--my', py + '%');
+      
+      // 3D tilt (فقط روی دسکتاپ)
+      if (window.matchMedia('(hover: hover)').matches) {
+        const rx = ((y / rect.height) - .5) * -6;
+        const ry = ((x / rect.width) - .5) * 6;
+        card.style.transform = `translateY(-10px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+      }
+    });
+  }, { passive: true });
+  
+  document.addEventListener('mouseleave', () => {
+    if (currentCard) { currentCard.style.transform = ''; currentCard = null; }
+  });
+})();
+
 /* ---------- Globals for HTML onclick ---------- */
 window.closeCartDrawer  = closeCartDrawer;
 window.closeWishDrawer  = closeWishDrawer;
