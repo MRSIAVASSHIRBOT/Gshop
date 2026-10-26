@@ -1,6 +1,6 @@
 /* ==========================================================
    G_SHOP — app.js
-   Frontend main logic — production build v12
+   Frontend main logic — production build v13
    ========================================================== */
 'use strict';
 
@@ -9,7 +9,7 @@ const K = window.GSHOP_KEYS;
 
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:8787'
-  : '';
+  : ''; // استفاده از دامنه اصلی برای ارتباط با Worker
 
 const SUPPORT_TG   = 'Alisdt98';
 const PHONE        = '09120507960';
@@ -129,85 +129,85 @@ const isPostal = (p) => /^\d{10}$/.test(String(p).replace(/\D/g, ''));
 /* ---------- CSS injection ---------- */
 (function injectStyles() {
   const css = `
-    .float-cart{position:fixed;bottom:24px;right:24px;z-index:145;display:none;padding:14px 22px;border-radius:100px;background:var(--lime);color:var(--ink);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;box-shadow:0 12px 30px -8px rgba(0,0,0,.6);align-items:center;gap:10px;transform:translateY(140%);opacity:0;transition:all .4s var(--ease)}
+    .float-cart{position:fixed;bottom:24px;right:24px;z-index:145;display:none;padding:14px 22px;border-radius:100px;background:linear-gradient(135deg,var(--lime),color-mix(in srgb,var(--lime) 70%,var(--green)));color:var(--ink);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;box-shadow:0 15px 40px -8px rgba(0,0,0,.6),0 0 40px -10px var(--glow-lime);align-items:center;gap:10px;transform:translateY(140%);opacity:0;transition:all .5s var(--spring)}
     .float-cart.on{transform:translateY(0);opacity:1}
     .float-cart svg{width:18px;height:18px}
     .float-cart__count{background:var(--ink);color:var(--lime);min-width:22px;height:22px;border-radius:100px;display:grid;place-items:center;font-size:11px;padding:0 6px}
     @media(max-width:700px){.float-cart{display:flex}.back-top{bottom:24px}.back-top.shifted{bottom:90px}}
-    .search-suggest{position:absolute;top:calc(100% + 8px);right:0;left:0;background:var(--ink-1);border:1px solid var(--line-2);border-radius:var(--r-md);z-index:30;max-height:380px;overflow-y:auto;box-shadow:var(--shadow-lg);display:none}
+    .search-suggest{position:absolute;top:calc(100% + 10px);right:0;left:0;background:color-mix(in srgb,var(--ink-1) 96%,transparent);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);border:1px solid var(--glass-line);border-radius:var(--r-md);z-index:30;max-height:400px;overflow-y:auto;box-shadow:var(--shadow-lg);display:none}
     .search-suggest.on{display:block}
-    .search-suggest__item{padding:12px 18px;cursor:pointer;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);transition:background .15s;text-align:right;font-family:inherit;width:100%}
+    .search-suggest__item{padding:14px 20px;cursor:pointer;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--glass-line);transition:background .2s;text-align:right;font-family:inherit;width:100%}
     .search-suggest__item:last-child{border-bottom:0}
-    .search-suggest__item:hover{background:var(--ink-2)}
-    .search-suggest__item img{width:40px;height:50px;border-radius:8px;object-fit:cover;flex-shrink:0}
+    .search-suggest__item:hover{background:var(--glass-bg-hi)}
+    .search-suggest__item img{width:42px;height:52px;border-radius:10px;object-fit:cover;flex-shrink:0}
     .search-suggest__info{flex:1;min-width:0}
     .search-suggest__name{font-size:13.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .search-suggest__price{font-size:11.5px;color:var(--lime);font-family:'Space Grotesk',sans-serif;margin-top:2px}
-    .search-suggest__head{padding:10px 18px 6px;font-size:11px;color:var(--dim);letter-spacing:.05em}
-    .search-suggest__history{display:flex;align-items:center;gap:8px;padding:10px 18px;cursor:pointer;font-size:13px;color:var(--dim);transition:background .15s}
-    .search-suggest__history:hover{background:var(--ink-2);color:var(--text)}
+    .search-suggest__price{font-size:11.5px;color:var(--lime);font-family:'Space Grotesk',sans-serif;margin-top:3px}
+    .search-suggest__head{padding:12px 20px 8px;font-size:11px;color:var(--dim);letter-spacing:.05em}
+    .search-suggest__history{display:flex;align-items:center;gap:10px;padding:12px 20px;cursor:pointer;font-size:13px;color:var(--dim);transition:all .2s}
+    .search-suggest__history:hover{background:var(--glass-bg-hi);color:var(--text)}
     .search-suggest__history svg{width:14px;height:14px}
-    .search-suggest__clear{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--dim)}
+    .search-suggest__clear{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid var(--glass-line);font-size:11.5px;color:var(--dim)}
     .search-suggest__clear button{color:var(--red);font-weight:600}
-    .ship-progress{padding:14px 18px;background:var(--ink-2);border-radius:var(--r-md);margin-bottom:14px;border:1px solid var(--line)}
-    .ship-progress.done{background:color-mix(in srgb,var(--green) 12%,transparent);border-color:color-mix(in srgb,var(--green) 40%,transparent)}
-    .ship-progress__text{font-size:12.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .ship-progress__text b{color:var(--lime);font-weight:700}
+    .ship-progress{padding:16px 20px;background:var(--glass-bg);backdrop-filter:blur(30px);border-radius:var(--r-md);margin-bottom:16px;border:1px solid var(--glass-line)}
+    .ship-progress.done{background:color-mix(in srgb,var(--green) 10%,transparent);border-color:color-mix(in srgb,var(--green) 40%,transparent);box-shadow:0 0 30px -10px rgba(74,222,128,.5)}
+    .ship-progress__text{font-size:12.5px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .ship-progress__text b{color:var(--lime);font-weight:700;text-shadow:0 0 12px var(--glow-lime)}
     .ship-progress.done .ship-progress__text{color:var(--green);font-weight:600}
-    .ship-progress__bar{height:6px;background:var(--ink-3);border-radius:100px;overflow:hidden;position:relative}
-    .ship-progress__fill{height:100%;background:linear-gradient(90deg,var(--lime),var(--green));border-radius:100px;transition:width .6s cubic-bezier(.22,1,.36,1);box-shadow:0 0 12px color-mix(in srgb,var(--lime) 60%,transparent)}
-    .citem__note-btn{font-size:11px;color:var(--dim);padding:4px 8px;border-radius:100px;margin-top:6px;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
-    .citem__note-btn:hover{background:var(--ink-3);color:var(--text)}
+    .ship-progress__bar{height:6px;background:rgba(0,0,0,.4);border-radius:100px;overflow:hidden;position:relative}
+    .ship-progress__fill{height:100%;background:linear-gradient(90deg,var(--lime),var(--green));border-radius:100px;transition:width .7s cubic-bezier(.22,1,.36,1);box-shadow:0 0 16px var(--glow-lime)}
+    .citem__note-btn{font-size:11px;color:var(--dim);padding:5px 10px;border-radius:100px;margin-top:6px;transition:all .25s var(--ease);display:inline-flex;align-items:center;gap:4px}
+    .citem__note-btn:hover{background:var(--glass-bg-hi);color:var(--text)}
     .citem__note-btn.on{color:var(--gold)}
-    .citem__later-btn{font-size:11px;color:var(--dim);padding:4px 8px;border-radius:100px;transition:all .2s}
-    .citem__later-btn:hover{background:var(--ink-3);color:var(--purple)}
-    .citem__note-show{font-size:11px;color:var(--gold);margin-top:4px;padding:4px 8px;background:color-mix(in srgb,var(--gold) 10%,transparent);border-radius:6px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .pcard__viewers{position:absolute;bottom:14px;left:14px;padding:5px 10px;border-radius:100px;background:rgba(255,75,62,.9);backdrop-filter:blur(10px);color:#fff;font-size:10px;font-weight:700;z-index:3;display:flex;align-items:center;gap:4px;animation:pulseViewers 2s ease-in-out infinite}
+    .citem__later-btn{font-size:11px;color:var(--dim);padding:5px 10px;border-radius:100px;transition:all .25s var(--ease)}
+    .citem__later-btn:hover{background:var(--glass-bg-hi);color:var(--purple)}
+    .citem__note-show{font-size:11px;color:var(--gold);margin-top:4px;padding:5px 10px;background:color-mix(in srgb,var(--gold) 10%,transparent);border-radius:8px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pcard__viewers{position:absolute;bottom:14px;left:14px;padding:6px 12px;border-radius:100px;background:rgba(255,75,62,.9);backdrop-filter:blur(12px);color:#fff;font-size:10px;font-weight:700;z-index:3;display:flex;align-items:center;gap:5px;animation:pulseViewers 2.5s ease-in-out infinite}
     .pcard__viewers::before{content:'';width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
-    @keyframes pulseViewers{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+    @keyframes pulseViewers{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .trust-badges{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:30px 0 0}
-    @media(max-width:700px){.trust-badges{grid-template-columns:repeat(2,1fr);gap:10px}}
-    .trust-badge{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-md);transition:all .3s var(--ease)}
-    .trust-badge:hover{border-color:var(--line-2);transform:translateY(-3px)}
-    .trust-badge__icon{width:40px;height:40px;border-radius:12px;background:color-mix(in srgb,var(--lime) 12%,transparent);display:grid;place-items:center;font-size:20px;flex-shrink:0}
-    .trust-badge__text b{display:block;font-size:12.5px;color:var(--text);font-weight:600;margin-bottom:2px}
+    .trust-badges{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:36px 0 0}
+    @media(max-width:700px){.trust-badges{grid-template-columns:repeat(2,1fr);gap:12px}}
+    .trust-badge{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--glass-bg);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-md);transition:all .4s var(--spring)}
+    .trust-badge:hover{border-color:var(--lime);transform:translateY(-4px);box-shadow:0 20px 40px -15px rgba(0,0,0,.5),0 0 30px -10px var(--glow-lime)}
+    .trust-badge__icon{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--lime) 15%,transparent),color-mix(in srgb,var(--green) 10%,transparent));display:grid;place-items:center;font-size:20px;flex-shrink:0}
+    .trust-badge__text b{display:block;font-size:12.5px;color:var(--text);font-weight:600;margin-bottom:3px}
     .trust-badge__text span{font-size:10.5px;color:var(--dim)}
-    .purchase-popup{position:fixed;bottom:90px;right:24px;z-index:140;background:var(--ink-1);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow-lg);max-width:calc(100vw - 40px);transform:translateX(120%);transition:transform .5s cubic-bezier(.22,1,.36,1);font-size:12.5px}
+    .purchase-popup{position:fixed;bottom:90px;right:24px;z-index:140;background:var(--glass-bg-hi);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-lg);padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-lg);max-width:calc(100vw - 40px);transform:translateX(120%);transition:transform .55s var(--spring);font-size:12.5px}
     .purchase-popup.on{transform:translateX(0)}
-    .purchase-popup img{width:40px;height:50px;border-radius:8px;object-fit:cover;flex-shrink:0}
+    .purchase-popup img{width:44px;height:55px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--glass-line)}
     .purchase-popup__text{flex:1;min-width:0}
-    .purchase-popup__text b{color:var(--lime);font-weight:700}
-    .purchase-popup__text small{display:block;color:var(--dim);font-size:10.5px;margin-top:2px}
+    .purchase-popup__text b{color:var(--lime);font-weight:700;text-shadow:0 0 12px var(--glow-lime)}
+    .purchase-popup__text small{display:block;color:var(--dim);font-size:10.5px;margin-top:3px}
     @media(max-width:700px){.purchase-popup{bottom:130px;right:16px;left:16px;max-width:none}}
-    .gallery__nav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.65);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:3;transition:all .25s ease;opacity:0}
+    .gallery__nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:3;transition:all .3s var(--spring);opacity:0}
     .gallery__main:hover .gallery__nav{opacity:1}
-    .gallery__nav:hover{background:var(--lime);color:var(--ink);border-color:var(--lime);transform:translateY(-50%) scale(1.1)}
+    .gallery__nav:hover{background:var(--lime);color:var(--ink);border-color:var(--lime);transform:translateY(-50%) scale(1.12)}
     .gallery__nav svg{width:18px;height:18px}
     .gallery__nav--prev{right:14px}
     .gallery__nav--next{left:14px}
-    .gallery__counter{position:absolute;top:14px;left:14px;background:rgba(0,0,0,.7);backdrop-filter:blur(10px);color:#fff;font-family:'Space Grotesk',sans-serif;font-size:11.5px;padding:6px 12px;border-radius:100px;z-index:3;pointer-events:none}
-    @media(max-width:700px){.gallery__nav{opacity:1;width:34px;height:34px}.gallery__nav svg{width:16px;height:16px}.gallery__nav--prev{right:10px}.gallery__nav--next{left:10px}}
-    .quick-reorder-btn{padding:8px 14px;border-radius:100px;background:var(--lime);color:var(--ink);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;margin-top:8px;transition:all .25s}
-    .quick-reorder-btn:hover{transform:translateY(-2px)}
+    .gallery__counter{position:absolute;top:16px;left:16px;background:rgba(0,0,0,.7);backdrop-filter:blur(12px);color:#fff;font-family:'Space Grotesk',sans-serif;font-size:11.5px;padding:7px 14px;border-radius:100px;z-index:3;pointer-events:none}
+    @media(max-width:700px){.gallery__nav{opacity:1;width:36px;height:36px}.gallery__nav svg{width:16px;height:16px}.gallery__nav--prev{right:10px}.gallery__nav--next{left:10px}}
+    .quick-reorder-btn{padding:10px 16px;border-radius:100px;background:linear-gradient(135deg,var(--lime),var(--green));color:var(--ink);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;margin-top:10px;transition:all .35s var(--spring);box-shadow:0 8px 20px -8px var(--glow-lime)}
+    .quick-reorder-btn:hover{transform:translateY(-2px);box-shadow:0 12px 30px -8px var(--glow-lime)}
     .quick-reorder-btn:disabled{opacity:.5;cursor:not-allowed}
     .quick-reorder-btn svg{width:14px;height:14px}
-    .share-sheet{position:fixed;bottom:0;left:0;right:0;z-index:320;background:var(--ink-1);border-top:1px solid var(--line-2);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:24px 20px 32px;transform:translateY(100%);transition:transform .4s cubic-bezier(.22,1,.36,1);max-width:500px;margin:0 auto}
+    .share-sheet{position:fixed;bottom:0;left:0;right:0;z-index:320;background:color-mix(in srgb,var(--ink-1) 96%,transparent);backdrop-filter:blur(30px) saturate(180%);border-top:1px solid var(--glass-line);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:28px 22px 36px;transform:translateY(100%);transition:transform .5s var(--spring);max-width:500px;margin:0 auto;box-shadow:0 -20px 60px -20px rgba(0,0,0,.5)}
     .share-sheet.on{transform:translateY(0)}
-    .share-sheet__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+    .share-sheet__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
     .share-sheet__head h3{font-size:17px}
-    .share-sheet__options{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-    .share-opt{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 8px;border-radius:var(--r-md);background:var(--ink-2);border:1px solid var(--line);transition:all .2s;cursor:pointer;font-family:inherit}
-    .share-opt:hover{border-color:var(--line-2);transform:translateY(-2px)}
-    .share-opt .emoji{font-size:24px}
+    .share-sheet__options{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .share-opt{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 10px;border-radius:var(--r-md);background:var(--glass-bg);border:1px solid var(--glass-line);transition:all .35s var(--spring);cursor:pointer;font-family:inherit}
+    .share-opt:hover{border-color:var(--lime);transform:translateY(-4px)}
+    .share-opt .emoji{font-size:26px}
     .share-opt span{font-size:11px;color:var(--text)}
     .share-opt.tg{color:#229ED9}
     .share-opt.copy{color:var(--lime)}
-    @media(max-width:700px){.toolbar{position:sticky;top:60px;z-index:40;background:var(--ink);padding:10px 0;margin:0 -20px;padding-inline:20px}}
+    @media(max-width:700px){.toolbar{position:sticky;top:60px;z-index:40;background:color-mix(in srgb,var(--ink) 92%,transparent);backdrop-filter:blur(20px);padding:12px 0;margin:0 -20px;padding-inline:20px}}
     .nav__links a.spy-active{color:var(--lime)}
     .nav__links a.spy-active::after{transform:scaleX(1)}
-    .empty-state{grid-column:1/-1;padding:80px 30px;text-align:center;color:var(--dim);border:1px dashed var(--line-2);border-radius:var(--r-lg)}
-    .toast{animation:toastSlideIn .35s cubic-bezier(.22,1,.36,1)}
+    .empty-state{grid-column:1/-1;padding:80px 30px;text-align:center;color:var(--dim);border:1px dashed var(--glass-line);border-radius:var(--r-lg);background:var(--glass-bg);backdrop-filter:blur(30px)}
+    .toast{animation:toastSlideIn .4s var(--spring)}
     @keyframes toastSlideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
     .pcard__recent{position:absolute;top:14px;left:60px;padding:4px 10px;border-radius:100px;background:rgba(0,0,0,.7);backdrop-filter:blur(10px);color:#fff;font-size:10px;font-weight:600;z-index:3;pointer-events:none}
     .pcard:focus-visible{outline:2px solid var(--lime);outline-offset:4px}
@@ -697,7 +697,7 @@ function renderRecent() {
   const grid = $('#recentGrid');
   if (!grid) return;
   grid.innerHTML = recentProducts.map((p, i) => productCardHTML(p, i)).join('');
-  observeReveals();  // ✅ fix: کارت‌ها نامرئی نمی‌مونن
+  observeReveals();
 }
 
 /* ---------- Trust Badges ---------- */
@@ -776,7 +776,7 @@ function initSearchSuggest() {
   }
 
   function renderSuggest(q) {
-    const history = readHistory();   // ✅ هر بار تازه خونده می‌شه
+    const history = readHistory();
     const term = String(q || '').trim().toLowerCase();
 
     let items = [];
@@ -1865,13 +1865,14 @@ function openCheckout({ subtotal, discount, coupon }) {
   updateScrollLock();
 }
 
+/* ---------- Success + Snapp Pay / Zibal ---------- */
 function showSuccess(order, info) {
   const box = $('#modalBox');
   if (!box) return;
   const itemsText = state.cart.map(i => `• ${i.name} | ${i.color} | ${i.size} | ×${i.qty} | ${fmt(i.price * i.qty)}`).join('\n');
   const msg = `🛒 سفارش جدید G_SHOP\n\n🆔 ${order.orderNo}\n👤 ${info.name}\n📱 ${info.phone}\n📍 ${info.province} - ${info.city}\n📮 ${info.postal}\n🏠 ${info.address}\n\n${itemsText}\n\n💰 جمع: ${fmt(order.subtotal)}\n${order.discount ? `🎟 تخفیف: − ${fmt(order.discount)}\n` : ''}${order.shipping ? `🚚 ارسال: ${fmt(order.shipping)}\n` : '🚚 ارسال: رایگان\n'}✅ نهایی: ${fmt(order.total)}`;
 
-  // آیا درگاه پرداخت فعاله؟
+  // آیا درگاه پرداخت فعاله؟ (زیبال یا اسنپ پی)
   const canPay = Boolean(order.paymentEnabled && order.orderNo && !order.orderNo.includes('000000'));
 
   box.innerHTML = `
@@ -1890,8 +1891,9 @@ function showSuccess(order, info) {
         <div class="row total"><span>مبلغ نهایی</span><b>${fmt(order.total)}</b></div>
       </div>
       ${canPay
-        ? `<p style="color:var(--lime);font-size:13px;margin-bottom:14px;line-height:1.7">💳 برای تکمیل سفارش، مبلغ را آنلاین پرداخت کنید. بعد از پرداخت، سفارش تایید می‌شود.</p>
-           <button type="button" class="checkout-btn" id="payNow" style="margin-bottom:10px;background:var(--lime);color:var(--ink);font-weight:700">💳 پرداخت آنلاین ${fmt(order.total)}</button>`
+        ? `<p style="color:var(--lime);font-size:13px;margin-bottom:14px;line-height:1.7">💳 برای تکمیل سفارش، یکی از روش‌های پرداخت زیر را انتخاب کنید:</p>
+           <button type="button" class="checkout-btn" id="payNow" style="margin-bottom:10px;background:var(--lime);color:var(--ink);font-weight:700">💳 پرداخت با زیبال ${fmt(order.total)}</button>
+           <button type="button" class="checkout-btn" id="paySnapp" style="margin-bottom:10px;background:#00D2FF;color:#fff;font-weight:700">📱 پرداخت با اسنپ پی ${fmt(order.total)}</button>`
         : `<p style="color:var(--dim);font-size:12.5px;margin-bottom:14px;line-height:1.7">برای نهایی‌سازی، سفارش را به پشتیبانی ارسال کنید.</p>`
       }
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -1902,11 +1904,12 @@ function showSuccess(order, info) {
     </div>
   `;
 
+  // پرداخت با زیبال
   if ($('#payNow')) {
     $('#payNow').onclick = async () => {
       const btn = $('#payNow');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال اتصال به درگاه...';
+      btn.textContent = '⏳ در حال اتصال به زیبال...';
       try {
         const r = await api('/api/payment/request', {
           method: 'POST',
@@ -1921,7 +1924,32 @@ function showSuccess(order, info) {
       } catch (e) {
         toast(e.message, 'err', 5000);
         btn.disabled = false;
-        btn.textContent = `💳 پرداخت آنلاین ${fmt(order.total)}`;
+        btn.textContent = `💳 پرداخت با زیبال ${fmt(order.total)}`;
+      }
+    };
+  }
+
+  // پرداخت با اسنپ پی
+  if ($('#paySnapp')) {
+    $('#paySnapp').onclick = async () => {
+      const btn = $('#paySnapp');
+      btn.disabled = true;
+      btn.textContent = '⏳ در حال اتصال به اسنپ پی...';
+      try {
+        const r = await api('/api/payment/snapp/request', {
+          method: 'POST',
+          body: JSON.stringify({ orderNo: order.orderNo }),
+        });
+        if (r.paymentUrl) {
+          toast('در حال انتقال به اسنپ پی...');
+          setTimeout(() => { window.location.href = r.paymentUrl; }, 500);
+        } else {
+          throw new Error(r.error || 'خطا در ایجاد پرداخت');
+        }
+      } catch (e) {
+        toast(e.message, 'err', 5000);
+        btn.disabled = false;
+        btn.textContent = `📱 پرداخت با اسنپ پی ${fmt(order.total)}`;
       }
     };
   }
@@ -2225,36 +2253,7 @@ function bindGlobal() {
   });
 }
 
-/* ---------- Init ---------- */
-(async function init() {
-  try {
-    initTheme();
-    loadLocal();
-    renderBadges();
-    renderCompareBar();
-    bindGlobal();
-    observeReveals();
-    initOffline();
-    initScrollUI();
-    initFAQ();
-    initSearchSuggest();
-    injectTrustBadges();
-    await loadContent();
-    await loadSettings();
-    initCountdown();   // ← بعد از loadSettings
-    await loadProducts();
-
-    const params = new URLSearchParams(location.search);
-    const pid = params.get('id');
-    if (pid && state.products.some(p => p.id === Number(pid))) {
-      setTimeout(() => openProduct(Number(pid)), 400);
-    }
-  } catch (e) {
-    logError('init', e);
-  }
-})();
-
-// ---------- 3D Tilt for Product Cards ----------
+/* ---------- 3D Tilt for Product Cards ---------- */
 (function initTilt3D() {
   let currentCard = null;
   let rafId = null;
@@ -2291,6 +2290,58 @@ function bindGlobal() {
   document.addEventListener('mouseleave', () => {
     if (currentCard) { currentCard.style.transform = ''; currentCard = null; }
   });
+})();
+
+/* ---------- Init ---------- */
+(async function init() {
+  try {
+    initTheme();
+    loadLocal();
+    renderBadges();
+    renderCompareBar();
+    bindGlobal();
+    observeReveals();
+    initOffline();
+    initScrollUI();
+    initFAQ();
+    initSearchSuggest();
+    injectTrustBadges();
+    await loadContent();
+    await loadSettings();
+    initCountdown();   // بعد از loadSettings
+    await loadProducts();
+
+    const params = new URLSearchParams(location.search);
+    const pid = params.get('id');
+    if (pid && state.products.some(p => p.id === Number(pid))) {
+      setTimeout(() => openProduct(Number(pid)), 400);
+    }
+
+    // بررسی نتیجه‌ی پرداخت از URL
+    const paymentStatus = params.get('payment');
+    const paymentOrder = params.get('order');
+    if (paymentStatus === 'success' && paymentOrder) {
+      setTimeout(() => {
+        toast(`✅ پرداخت سفارش ${paymentOrder} با موفقیت انجام شد`, 'ok', 6000);
+        const cleanUrl = location.origin + location.pathname;
+        history.replaceState(null, '', cleanUrl);
+      }, 800);
+    } else if (paymentStatus === 'failed' && paymentOrder) {
+      setTimeout(() => {
+        toast(`❌ پرداخت سفارش ${paymentOrder} ناموفق بود. دوباره تلاش کنید.`, 'err', 6000);
+        const cleanUrl = location.origin + location.pathname;
+        history.replaceState(null, '', cleanUrl);
+      }, 800);
+    } else if (paymentStatus === 'invalid') {
+      setTimeout(() => {
+        toast('اطلاعات پرداخت نامعتبر است', 'err', 5000);
+        const cleanUrl = location.origin + location.pathname;
+        history.replaceState(null, '', cleanUrl);
+      }, 800);
+    }
+  } catch (e) {
+    logError('init', e);
+  }
 })();
 
 /* ---------- Globals for HTML onclick ---------- */
