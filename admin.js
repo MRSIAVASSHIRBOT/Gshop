@@ -1,6 +1,6 @@
 /* ==========================================================
    G_SHOP — admin.js
-   پنل مدیریت — production build v12
+   نسخه نهایی با اصلاح دکمه ویرایش و استایل شیشه‌ای
    ========================================================== */
 'use strict';
 
@@ -21,12 +21,11 @@ async function openAdmin() {
   if (!token) { renderAdminLogin(); return; }
 
   try {
-    // verify توکن با یک endpoint سبک
-    await api('/api/admin/stats');
+    await api('/api/admin/me');
     adminState.isAdmin = true;
     renderAdmin();
   } catch (e) {
-    if (e.status === 401) { safeStore(ADMIN_TOKEN_KEY, ''); localStorage.removeItem(ADMIN_TOKEN_KEY); }
+    if (e.status === 401) { localStorage.removeItem(ADMIN_TOKEN_KEY); }
     renderAdminLogin();
   }
 }
@@ -45,13 +44,15 @@ function renderAdminLogin() {
   const body = $('#adminBody');
   if (!body) return;
   body.innerHTML = `
-    <div class="login"><div class="modal__box" style="width:min(420px,100%);position:relative;transform:none;margin:0">
-      <h2>ورود مدیر</h2><p class="sub">نام کاربری و رمز عبور را وارد کنید.</p>
-      <div class="field"><label>نام کاربری</label><input type="text" id="adminUser" autocomplete="username"></div>
-      <div class="field"><label>رمز عبور</label><input type="password" id="adminPw" placeholder="••••••••" autocomplete="current-password"></div>
-      <div class="err" id="adminErr"></div>
-      <button type="button" class="checkout-btn" id="adminLogin">ورود</button>
-    </div></div>
+    <div class="login">
+      <div class="modal__box" style="width:min(420px,100%);position:relative;transform:none;margin:0">
+        <h2>ورود مدیر</h2><p class="sub">نام کاربری و رمز عبور را وارد کنید.</p>
+        <div class="field"><label>نام کاربری</label><input type="text" id="adminUser" autocomplete="username"></div>
+        <div class="field"><label>رمز عبور</label><input type="password" id="adminPw" placeholder="••••••••" autocomplete="current-password"></div>
+        <div class="err" id="adminErr"></div>
+        <button type="button" class="checkout-btn" id="adminLogin">ورود</button>
+      </div>
+    </div>
   `;
 
   const submit = async () => {
@@ -183,11 +184,6 @@ async function loadDashboard() {
           <div style="color:var(--dim);font-size:13px;line-height:2">${lowItems.map(i => `• ${esc(i.product_name)} — ${esc(i.color)} ${esc(i.size)}: ${fmtNum(i.stock)} عدد`).join('<br>')}</div>
         </div>
       ` : ''}
-      ${Array.isArray(s.recentOrders) && s.recentOrders.length ? `
-        <div class="chart"><h3>🕐 آخرین سفارشات</h3>
-          ${s.recentOrders.map(o => `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap;gap:8px"><span class="mono" style="color:var(--lime)">${esc(o.order_no)}</span><span>${esc(o.name)}</span><span style="font-family:'Space Grotesk',sans-serif">${fmt(o.total)}</span></div>`).join('')}
-        </div>
-      ` : ''}
     `;
 
     $('#testTelegram').onclick = async () => {
@@ -223,7 +219,7 @@ async function loadDashboard() {
   }
 }
 
-/* ---------- Products Admin ---------- */
+/* ---------- Products Admin (اصلاح شده با Event Delegation) ---------- */
 async function loadProductsAdmin() {
   const el = $('#panel-products');
   if (!el) return;
@@ -284,7 +280,6 @@ async function loadProductsAdmin() {
                 <div>📦 موجودی کل: <b style="color:${stock === 0 ? 'var(--red)' : stock <= 3 ? 'var(--gold)' : 'var(--green)'}">${fmtNum(stock)}</b> عدد</div>
                 <div>🎨 رنگ‌ها: ${colors.length ? colors.map(esc).join(' · ') : '—'}</div>
                 <div>📏 سایزها: ${sizes.length ? sizes.map(esc).join(' · ') : '—'}</div>
-                ${p.category ? `<div>📂 دسته: ${esc(p.category)}</div>` : ''}
               </div>
               <div class="prod-admin__head actions" style="margin:0;justify-content:flex-start;gap:8px;flex-wrap:wrap">
                 <button type="button" data-edit="${p.id}">✏️ ویرایش</button>
@@ -296,42 +291,59 @@ async function loadProductsAdmin() {
           </div>
         `;
       }).join('');
+    };
 
-      container.querySelectorAll('[data-edit]').forEach(b => {
-        b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openEditProduct(Number(b.dataset.edit)); };
-      });
-      container.querySelectorAll('[data-toggle-active]').forEach(b => {
-        b.onclick = async () => {
-          const isActive = b.dataset.active === '1';
+    // ✨ مهم‌ترین بخش: Event Delegation برای اینکه دکمه‌ها همیشه کار کنن
+    const prodList = $('#prodList');
+    if (prodList) {
+      prodList.addEventListener('click', async (e) => {
+        const editBtn = e.target.closest('[data-edit]');
+        if (editBtn) {
+          e.preventDefault();
+          const pid = Number(editBtn.dataset.edit);
+          if (pid) openEditProduct(pid);
+          return;
+        }
+
+        const toggleBtn = e.target.closest('[data-toggle-active]');
+        if (toggleBtn) {
+          const isActive = toggleBtn.dataset.active === '1';
           const active = isActive ? 0 : 1;
           try {
-            await api('/api/admin/products/' + b.dataset.toggleActive, { method: 'PATCH', body: JSON.stringify({ active }) });
+            await api('/api/admin/products/' + toggleBtn.dataset.toggleActive, { method: 'PATCH', body: JSON.stringify({ active }) });
             toast(active ? 'فعال شد ✓' : 'غیرفعال شد');
             loadProductsAdmin();
-          } catch (e) { toast(e.message, 'err'); }
-        };
-      });
-      container.querySelectorAll('[data-del]').forEach(b => {
-        b.onclick = async () => {
+          } catch (err) { toast(err.message, 'err'); }
+          return;
+        }
+
+        const delBtn = e.target.closest('[data-del]');
+        if (delBtn) {
           if (!await confirmDialog('حذف محصول', 'این محصول و همه واریانت‌هاش حذف می‌شن. مطمئنی؟')) return;
           try {
-            await api('/api/admin/products/' + b.dataset.del, { method: 'DELETE' });
+            await api('/api/admin/products/' + delBtn.dataset.del, { method: 'DELETE' });
             toast('محصول حذف شد');
             loadProducts();
             loadProductsAdmin();
-          } catch (e) { toast(e.message, 'err'); }
-        };
+          } catch (err) { toast(err.message, 'err'); }
+          return;
+        }
+
+        const galleryBtn = e.target.closest('[data-gallery]');
+        if (galleryBtn) {
+          e.preventDefault();
+          openGalleryManager(Number(galleryBtn.dataset.gallery));
+          return;
+        }
       });
-      container.querySelectorAll('[data-gallery]').forEach(b => {
-        b.onclick = (e) => { e.preventDefault(); openGalleryManager(Number(b.dataset.gallery)); };
-      });
-    };
+    }
 
     render();
     const debouncedRender = debounce((v, s) => render(v, s), 250);
     $('#prodSearch').oninput = e => debouncedRender(e.target.value, $('#prodStatusFilter').value);
     $('#prodStatusFilter').onchange = e => render($('#prodSearch').value, e.target.value);
     $('#prodAddBtn').onclick = () => document.querySelector('.tab[data-tab="newproduct"]')?.click();
+
   } catch (e) {
     if (e.status === 401) adminLogout();
     else el.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
@@ -348,8 +360,8 @@ function openEditProduct(pid) {
 
   box.classList.add('modal__box--wide');
   box.innerHTML = `
-    <div style="padding:32px" id="editProdContainer">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div style="padding:32px;background:var(--glass-bg);backdrop-filter:blur(30px);border-radius:var(--r-xl)" id="editProdContainer">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
         <h2 style="margin:0">ویرایش محصول #${p.id}</h2>
         <button type="button" class="close-x" id="epClose" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
@@ -365,7 +377,7 @@ function openEditProduct(pid) {
         </div>
         <div class="np-field"><label>ترتیب نمایش</label><input type="number" id="epSort" value="${p.sort_order || 0}"></div>
       </div>
-      <div class="np-field"><label>توضیحات</label><textarea id="epDesc" style="min-height:70px">${esc(p.description || '')}</textarea></div>
+      <div class="np-field"><label>توضیحات</label><textarea id="epDesc" style="min-height:80px">${esc(p.description || '')}</textarea></div>
       <div class="np-section">
         <div class="np-label">تصاویر محصول (حداکثر ۵)</div>
         <div id="epImagesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:12px"></div>
@@ -378,7 +390,7 @@ function openEditProduct(pid) {
         <div id="epVariants"></div>
       </div>
       <div class="err" id="epErr"></div>
-      <div style="display:flex;gap:10px;margin-top:20px">
+      <div style="display:flex;gap:10px;margin-top:24px">
         <button type="button" class="checkout-btn" id="epSave" style="flex:1">✓ ذخیره تغییرات</button>
         <button type="button" class="chip" id="epCancel" style="padding:14px 24px">لغو</button>
       </div>
@@ -393,13 +405,13 @@ function openEditProduct(pid) {
     const wrap = $('#epImagesGrid');
     if (!wrap) return;
     wrap.innerHTML = images.map((url, i) => `
-      <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-ep-img="${i}">
+      <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--glass-line)'};cursor:pointer" data-ep-img="${i}">
         ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover" alt="">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">📸 عکس ${nf(i + 1)}<br>(کلیک کن)</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
         ${url ? `<button type="button" class="del-btn" data-ep-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
     `).join('') + (images.length < 5 ? `
-      <div style="aspect-ratio:4/5;border-radius:12px;background:var(--ink);border:1px dashed var(--line-2);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-ep-img-add>
+      <div style="aspect-ratio:4/5;border-radius:12px;background:var(--glass-bg);border:1px dashed var(--glass-line);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-ep-img-add>
         <div style="text-align:center;font-size:11px"><div style="font-size:24px;margin-bottom:4px;opacity:.5">+</div>افزودن عکس</div>
       </div>
     ` : '');
@@ -448,10 +460,10 @@ function openEditProduct(pid) {
     if (!wrap) return;
     wrap.innerHTML = variants.map((v, i) => `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center">
-        <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <button type="button" class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
+        <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <button type="button" class="del-btn" data-vdel="${i}" style="padding:12px 16px">×</button>
       </div>
     `).join('');
     wrap.querySelectorAll('input').forEach(inp => {
@@ -505,11 +517,11 @@ function openEditProduct(pid) {
         body: JSON.stringify({
           name, price, compare_price, category, tag, sort_order, description,
           image: cleanImages[0],
-          variants: cleanVariants,
+          variants: cleanVariants, // ارسال کل آرایه برای همگام‌سازی
         }),
       });
 
-      // Gallery diff (فقط تفاوت‌ها)
+      // Gallery diff
       const oldGallery = galleryOf(p);
       const oldUrls = new Set(oldGallery.map(g => g.url));
       const newUrls = new Set(cleanImages.slice(1));
@@ -559,19 +571,19 @@ async function openGalleryManager(pid) {
 
   function render() {
     box.innerHTML = `
-      <div style="padding:32px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="padding:32px;background:var(--glass-bg);backdrop-filter:blur(30px);border-radius:var(--r-xl)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
           <h2 style="margin:0">گالری: ${esc(p.name)}</h2>
           <button type="button" class="close-x" id="gmClose" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
-        <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap">
           <input type="file" id="gmFile" accept="image/*" style="display:none">
           <button type="button" class="chip" id="gmUpload">📁 افزودن عکس</button>
           <button type="button" class="chip" id="gmUrl">🔗 افزودن با URL</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px" id="gmGrid">
           ${gallery.length
-            ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button type="button" class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('')
+            ? gallery.map(g => `<div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:1px solid var(--glass-line)"><img src="${esc(g.url)}" style="width:100%;height:100%;object-fit:cover" alt=""><button type="button" class="del-btn" data-gdel="${g.id}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:14px">×</button></div>`).join('')
             : '<p style="color:var(--dim);grid-column:1/-1">هنوز عکسی تو گالری نیست.</p>'}
         </div>
       </div>
@@ -673,12 +685,12 @@ async function loadAddProduct() {
     const wrap = $('#npImagesGrid');
     if (!wrap) return;
     wrap.innerHTML = images.map((url, i) => `
-      <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--line-2)'};cursor:pointer" data-img-slot="${i}">
+      <div style="position:relative;aspect-ratio:4/5;border-radius:12px;overflow:hidden;background:var(--ink-3);border:2px dashed ${i === 0 ? 'var(--lime)' : 'var(--glass-line)'};cursor:pointer" data-img-slot="${i}">
         ${url ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover" alt="">` : `<div style="display:grid;place-items:center;height:100%;color:var(--faint);font-size:11px;text-align:center;padding:8px">${i === 0 ? '📸 عکس اصلی<br>(کلیک کن)' : `📸 عکس ${nf(i + 1)}<br>(کلیک کن)`}</div>`}
         ${i === 0 ? `<div style="position:absolute;top:6px;right:6px;background:var(--lime);color:var(--ink);font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px">⭐ اصلی</div>` : ''}
         ${url ? `<button type="button" class="del-btn" data-img-rm="${i}" style="position:absolute;top:6px;left:6px;padding:4px 10px;font-size:12px;background:var(--red);color:#fff;border-color:var(--red)">×</button>` : ''}
       </div>
-    `).join('') + (images.length < 5 ? `<div style="aspect-ratio:4/5;border-radius:12px;background:var(--ink);border:1px dashed var(--line-2);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-img-add><div style="text-align:center;font-size:11px"><div style="font-size:24px;margin-bottom:4px;opacity:.5">+</div>افزودن عکس</div></div>` : '');
+    `).join('') + (images.length < 5 ? `<div style="aspect-ratio:4/5;border-radius:12px;background:var(--glass-bg);border:1px dashed var(--glass-line);display:grid;place-items:center;cursor:pointer;color:var(--dim)" data-img-add><div style="text-align:center;font-size:11px"><div style="font-size:24px;margin-bottom:4px;opacity:.5">+</div>افزودن عکس</div></div>` : '');
 
     wrap.querySelectorAll('[data-img-slot]').forEach(slot => {
       const i = Number(slot.dataset.imgSlot);
@@ -724,10 +736,10 @@ async function loadAddProduct() {
     if (!wrap) return;
     wrap.innerHTML = variants.map((v, i) => `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center">
-        <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
-        <button type="button" class="del-btn" data-vdel="${i}" style="padding:10px 14px">×</button>
+        <input type="text" value="${esc(v.color)}" placeholder="رنگ" data-vi="${i}" data-vk="color" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <input type="text" value="${esc(v.size)}" placeholder="سایز" data-vi="${i}" data-vk="size" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <input type="number" value="${v.stock}" min="0" data-vi="${i}" data-vk="stock" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
+        <button type="button" class="del-btn" data-vdel="${i}" style="padding:12px 16px">×</button>
       </div>
     `).join('');
     wrap.querySelectorAll('input').forEach(inp => {
@@ -1057,12 +1069,12 @@ async function loadCoupons() {
       <div class="prod-admin" style="margin-bottom:22px">
         <div style="font-size:14px;font-weight:700;margin-bottom:14px">➕ کد جدید</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
-          <input type="text" id="ncCode" placeholder="کد (مثلاً GIFT10)" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-family:'Space Grotesk',sans-serif;letter-spacing:.05em;text-transform:uppercase">
-          <select id="ncType" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)"><option value="percent">درصدی ٪</option><option value="fixed">مبلغ ثابت</option></select>
-          <input type="number" id="ncValue" placeholder="مقدار" min="1" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
-          <input type="number" id="ncMax" placeholder="حداکثر استفاده" min="1" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
-          <input type="number" id="ncMin" placeholder="حداقل خرید" min="0" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
-          <input type="text" id="ncLabel" placeholder="برچسب" style="padding:11px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text)">
+          <input type="text" id="ncCode" placeholder="کد (مثلاً GIFT10)" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-family:'Space Grotesk',sans-serif;letter-spacing:.05em;text-transform:uppercase">
+          <select id="ncType" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text)"><option value="percent">درصدی ٪</option><option value="fixed">مبلغ ثابت</option></select>
+          <input type="number" id="ncValue" placeholder="مقدار" min="1" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text)">
+          <input type="number" id="ncMax" placeholder="حداکثر استفاده" min="1" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text)">
+          <input type="number" id="ncMin" placeholder="حداقل خرید" min="0" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text)">
+          <input type="text" id="ncLabel" placeholder="برچسب" style="padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text)">
         </div>
         <button type="button" class="checkout-btn" id="ncAdd" style="padding:12px 24px;font-size:13px;width:auto">افزودن کد</button>
       </div>
@@ -1192,20 +1204,20 @@ async function loadContentPanel() {
     const imgField = (key, label) => `
       <div class="np-field" style="margin-bottom:14px"><label>${esc(label)}</label>
         <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
-          <div style="width:100px;aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3);border:1px solid var(--line);flex-shrink:0">
+          <div style="width:100px;aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3);border:1px solid var(--glass-line);flex-shrink:0">
             <img id="cv-img-${key}" src="${esc(content[key] || 'https://via.placeholder.com/200x250/1c1c1c/444?text=بدون+عکس')}" style="width:100%;height:100%;object-fit:cover" alt="">
           </div>
           <div style="flex:1;min-width:200px">
             <input type="file" id="cv-file-${key}" accept="image/*" style="display:none">
             <button type="button" class="chip" data-upload-key="${key}" style="width:100%;margin-bottom:6px">📁 تغییر عکس</button>
-            <input type="text" id="cv-url-${key}" value="${esc(content[key] || '')}" placeholder="یا URL مستقیم..." style="width:100%;padding:8px 12px;background:var(--ink);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:11.5px">
+            <input type="text" id="cv-url-${key}" value="${esc(content[key] || '')}" placeholder="یا URL مستقیم..." style="width:100%;padding:10px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:8px;color:var(--text);font-size:11.5px">
           </div>
         </div>
       </div>
     `;
     const txtField = (key, label, placeholder = '') => `
       <div class="np-field" style="margin-bottom:14px"><label>${esc(label)}</label>
-        <input type="text" id="cv-txt-${key}" value="${esc(content[key] || '')}" placeholder="${esc(placeholder)}" style="width:100%;padding:10px 14px;background:var(--ink);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px">
+        <input type="text" id="cv-txt-${key}" value="${esc(content[key] || '')}" placeholder="${esc(placeholder)}" style="width:100%;padding:12px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:10px;color:var(--text);font-size:13px">
       </div>
     `;
 
@@ -1392,9 +1404,9 @@ async function loadAudit() {
     const { logs } = await api('/api/admin/audit');
     if (!logs.length) { el.innerHTML = '<p style="color:var(--dim)">لاگی وجود ندارد.</p>'; return; }
     el.innerHTML = `
-      <div style="background:var(--ink-1);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr;padding:14px 18px;background:var(--ink-2);font-size:12px;font-weight:700;color:var(--dim);letter-spacing:.05em"><span>اکشن</span><span>هدف</span><span>توضیحات</span><span>زمان</span></div>
-        ${logs.map(l => `<div style="display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr;padding:12px 18px;font-size:12.5px;border-top:1px solid var(--line);align-items:center">
+      <div style="background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:var(--r-lg);overflow:hidden">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr;padding:14px 18px;background:var(--glass-bg-hi);font-size:12px;font-weight:700;color:var(--dim);letter-spacing:.05em"><span>اکشن</span><span>هدف</span><span>توضیحات</span><span>زمان</span></div>
+        ${logs.map(l => `<div style="display:grid;grid-template-columns:1fr 1fr 1.5fr 1fr;padding:12px 18px;font-size:12.5px;border-top:1px solid var(--glass-line);align-items:center">
           <span class="mono" style="color:var(--lime)">${esc(l.action)}</span>
           <span style="color:var(--text)">${esc(l.target || '-')}</span>
           <span style="color:var(--dim);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(String(l.payload || '').slice(0, 60))}</span>
