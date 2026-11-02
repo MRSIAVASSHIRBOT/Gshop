@@ -1,6 +1,6 @@
 /* ==========================================================
    G_SHOP — app.js
-   Frontend main logic — production build v13
+   Frontend main logic — production build v17
    ========================================================== */
 'use strict';
 
@@ -9,7 +9,7 @@ const K = window.GSHOP_KEYS;
 
 const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:8787'
-  : ''; // استفاده از دامنه اصلی برای ارتباط با Worker
+  : ''; 
 
 const SUPPORT_TG   = 'Alisdt98';
 const PHONE        = '09120507960';
@@ -534,11 +534,9 @@ async function loadProducts() {
     const { products } = await api('/api/products');
     state.products = Array.isArray(products) ? products : [];
 
-    // پاکسازی recent از محصولات حذف‌شده
     state.recent = state.recent.filter(id => state.products.some(p => p.id === id));
     saveRecent();
 
-    // پاکسازی سبد از محصولات/واریانت‌های ناموجود
     const removed = [];
     state.cart = state.cart.filter(item => {
       const p = state.products.find(x => x.id === item.id);
@@ -726,7 +724,7 @@ function startSocialProof() {
   socialProofTimers = [];
 
   const lastSeen = Number(safeGet(K.POPUP_SEEN, 0)) || 0;
-  if (Date.now() - lastSeen < 600000) return; // 10 دقیقه cooldown
+  if (Date.now() - lastSeen < 600000) return;
 
   const show = () => {
     if (document.hidden || document.body.classList.contains('no-scroll')) return;
@@ -1865,14 +1863,13 @@ function openCheckout({ subtotal, discount, coupon }) {
   updateScrollLock();
 }
 
-/* ---------- Success + Snapp Pay / Zibal ---------- */
+/* ---------- Success + Payment Methods ---------- */
 function showSuccess(order, info) {
   const box = $('#modalBox');
   if (!box) return;
   const itemsText = state.cart.map(i => `• ${i.name} | ${i.color} | ${i.size} | ×${i.qty} | ${fmt(i.price * i.qty)}`).join('\n');
   const msg = `🛒 سفارش جدید G_SHOP\n\n🆔 ${order.orderNo}\n👤 ${info.name}\n📱 ${info.phone}\n📍 ${info.province} - ${info.city}\n📮 ${info.postal}\n🏠 ${info.address}\n\n${itemsText}\n\n💰 جمع: ${fmt(order.subtotal)}\n${order.discount ? `🎟 تخفیف: − ${fmt(order.discount)}\n` : ''}${order.shipping ? `🚚 ارسال: ${fmt(order.shipping)}\n` : '🚚 ارسال: رایگان\n'}✅ نهایی: ${fmt(order.total)}`;
 
-  // آیا درگاه پرداخت فعاله؟ (زیبال یا اسنپ پی)
   const canPay = Boolean(order.paymentEnabled && order.orderNo && !order.orderNo.includes('000000'));
 
   box.innerHTML = `
@@ -1891,9 +1888,21 @@ function showSuccess(order, info) {
         <div class="row total"><span>مبلغ نهایی</span><b>${fmt(order.total)}</b></div>
       </div>
       ${canPay
-        ? `<p style="color:var(--lime);font-size:13px;margin-bottom:14px;line-height:1.7">💳 برای تکمیل سفارش، یکی از روش‌های پرداخت زیر را انتخاب کنید:</p>
+        ? `<div style="color:var(--gold); font-size:12px; margin-bottom:15px; text-align:center; background:rgba(251,191,36,0.1); padding:8px; border-radius:8px; border:1px solid rgba(251,191,36,0.3);">⚠️ برای اتصال صحیح به درگاه، حتماً <b>VPN خود را خاموش</b> کنید.</div>
+           <p style="color:var(--lime);font-size:13px;margin-bottom:14px;line-height:1.7">💳 برای تکمیل سفارش، یکی از روش‌های پرداخت زیر را انتخاب کنید:</p>
            <button type="button" class="checkout-btn" id="payNow" style="margin-bottom:10px;background:var(--lime);color:var(--ink);font-weight:700">💳 پرداخت با زیبال ${fmt(order.total)}</button>
-           <button type="button" class="checkout-btn" id="paySnapp" style="margin-bottom:10px;background:#00D2FF;color:#fff;font-weight:700">📱 پرداخت با اسنپ پی ${fmt(order.total)}</button>`
+           
+           <div id="cardFallback" style="display:none; background:color-mix(in srgb,var(--red) 10%,transparent); border:1px solid color-mix(in srgb,var(--red) 30%,transparent); border-radius:12px; padding:14px; margin-bottom:12px; text-align:right; font-size:12px; line-height:1.8; backdrop-filter:blur(10px);">
+             <div style="color:var(--red); font-weight:700; margin-bottom:6px">⚠️ خطا در اتصال به درگاه زیبال</div>
+             لطفاً از دکمه <b>دیجی‌پی</b> استفاده کنید یا مبلغ را به شماره کارت زیر واریز کرده و رسید را به پشتیبانی تلگرام ارسال کنید:
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:8px; border:1px solid var(--glass-line);">
+               <span class="mono" style="color:#fff; font-family:'Space Grotesk',sans-serif; font-size:13px; letter-spacing:1px;">5022291580076204</span>
+               <button type="button" id="copyCard" style="color:var(--lime); font-weight:700; font-size:11px;">کپی کارت</button>
+             </div>
+             <div style="color:var(--dim); font-size:10.5px; margin-top:6px;">به نام: علی سعادت پدید</div>
+           </div>
+
+           <button type="button" class="checkout-btn" id="payDigipay" style="margin-bottom:10px;background:#00D2FF;color:#fff;font-weight:700">📱 پرداخت با دیجی‌پی ${fmt(order.total)}</button>`
         : `<p style="color:var(--dim);font-size:12.5px;margin-bottom:14px;line-height:1.7">برای نهایی‌سازی، سفارش را به پشتیبانی ارسال کنید.</p>`
       }
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -1903,6 +1912,16 @@ function showSuccess(order, info) {
       </div>
     </div>
   `;
+
+  // کپی شماره کارت
+  if ($('#copyCard')) {
+    $('#copyCard').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText('5022291580076204');
+        toast('شماره کارت کپی شد ✓');
+      } catch { toast('کپی نشد', 'err'); }
+    };
+  }
 
   // پرداخت با زیبال
   if ($('#payNow')) {
@@ -1925,23 +1944,25 @@ function showSuccess(order, info) {
         toast(e.message, 'err', 5000);
         btn.disabled = false;
         btn.textContent = `💳 پرداخت با زیبال ${fmt(order.total)}`;
+        const fallback = $('#cardFallback');
+        if (fallback) fallback.style.display = 'block';
       }
     };
   }
 
-  // پرداخت با اسنپ پی
-  if ($('#paySnapp')) {
-    $('#paySnapp').onclick = async () => {
-      const btn = $('#paySnapp');
+  // پرداخت با دیجی‌پی
+  if ($('#payDigipay')) {
+    $('#payDigipay').onclick = async () => {
+      const btn = $('#payDigipay');
       btn.disabled = true;
-      btn.textContent = '⏳ در حال اتصال به اسنپ پی...';
+      btn.textContent = '⏳ در حال اتصال به دیجی‌پی...';
       try {
-        const r = await api('/api/payment/snapp/request', {
+        const r = await api('/api/payment/digipay/request', {
           method: 'POST',
           body: JSON.stringify({ orderNo: order.orderNo }),
         });
         if (r.paymentUrl) {
-          toast('در حال انتقال به اسنپ پی...');
+          toast('در حال انتقال به دیجی‌پی...');
           setTimeout(() => { window.location.href = r.paymentUrl; }, 500);
         } else {
           throw new Error(r.error || 'خطا در ایجاد پرداخت');
@@ -1949,7 +1970,7 @@ function showSuccess(order, info) {
       } catch (e) {
         toast(e.message, 'err', 5000);
         btn.disabled = false;
-        btn.textContent = `📱 پرداخت با اسنپ پی ${fmt(order.total)}`;
+        btn.textContent = `📱 پرداخت با دیجی‌پی ${fmt(order.total)}`;
       }
     };
   }
