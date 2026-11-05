@@ -1,0 +1,11 @@
+{
+  "name": "g-shop",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check worker.js && node --check app.js && node --check admin.js && node --check content.js && node --check keys.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

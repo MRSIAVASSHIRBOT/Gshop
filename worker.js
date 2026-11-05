@@ -56,16 +56,20 @@ const securityHeaders = {
 
 function getCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
-  const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map(s => s.trim());
-  const allowOrigin = allowed.includes("*") ? "*" : (allowed.includes(origin) ? origin : allowed[0] || "*");
-  
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string"
+    ? env.ALLOWED_ORIGINS.split(",").map(value => value.trim()).filter(Boolean)
+    : [];
+  const sameOrigin = origin && origin === new URL(request.url).origin;
+  const allowed = configuredOrigins.includes("*") || configuredOrigins.includes(origin)
+    || (!configuredOrigins.length && sameOrigin);
+  const headers = {
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, Authorization",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
+  if (allowed) headers["Access-Control-Allow-Origin"] = configuredOrigins.includes("*") ? "*" : origin;
+  return headers;
 }
 
 function jsonResponse(data, status = 200, env = {}, request = null, extraHeaders = {}) {
@@ -96,6 +100,29 @@ function formatMoney(num) {
   return new Intl.NumberFormat("fa-IR").format(Number(num) || 0);
 }
 
+/**
+ * Normalize order lines and merge duplicate product variants.
+ * This prevents duplicate lines from bypassing the per-variant quantity cap.
+ */
+export function aggregateOrderItems(items) {
+  if (!Array.isArray(items) || !items.length || items.length > 50) return null;
+  const merged = new Map();
+  for (const item of items) {
+    if (!item || typeof item !== "object") return null;
+    const productId = Number(item.productId);
+    const qty = Number(item.qty);
+    const color = sanitize(item.color, 40);
+    const size = sanitize(item.size, 20);
+    if (!Number.isSafeInteger(productId) || productId <= 0 || !Number.isSafeInteger(qty) || qty < 1 || qty > 20 || !color || !size) return null;
+    const key = JSON.stringify([productId, color, size]);
+    const current = merged.get(key);
+    const totalQty = (current?.qty || 0) + qty;
+    if (totalQty > 20) return null;
+    merged.set(key, { productId, qty: totalQty, color, size, name: sanitize(item.name, 60) });
+  }
+  return [...merged.values()];
+}
+
 function safeCompare(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
   let result = 0;
@@ -117,6 +144,12 @@ function checkRateLimit(key, maxAttempts, windowMs) {
   if (rateLimitCache.size > 1000) {
     for (const [k, v] of rateLimitCache.entries()) {
       if (now > v.resetAt) rateLimitCache.delete(k);
+    }
+    // Keep the isolate-local fallback strictly bounded under high-cardinality traffic.
+    while (rateLimitCache.size > 1000) {
+      const oldestKey = rateLimitCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      rateLimitCache.delete(oldestKey);
     }
   }
   return record.count <= maxAttempts;
@@ -428,13 +461,13 @@ export default {
         if (!city || city.length < 2) return jsonResponse({ error: "نام شهر نامعتبر است" }, 400, env, request);
         if (!/^\d{10}$/.test(postalCode)) return jsonResponse({ error: "کد پستی باید ۱۰ رقم باشد" }, 400, env, request);
         if (!address || address.length < 10) return jsonResponse({ error: "آدرس کامل را وارد کنید" }, 400, env, request);
-        if (!Array.isArray(items) || !items.length || items.length > 50) return jsonResponse({ error: "اقلام سبد خرید نامعتبر است" }, 400, env, request);
+        const normalizedItems = aggregateOrderItems(items);
+        if (!normalizedItems) return jsonResponse({ error: "اقلام سبد خرید نامعتبر است یا تعداد یک تنوع بیش از حد مجاز است" }, 400, env, request);
         let subtotal = 0; const verifiedItems = [];
-        for (const item of items) {
-          const productId = parseInt(item.productId), qty = parseInt(item.qty), color = sanitize(item.color, 40), size = sanitize(item.size, 20);
-          if (!productId || !color || !size || !Number.isInteger(qty) || qty < 1 || qty > 20) return jsonResponse({ error: "یکی از اقلام نامعتبر است" }, 400, env, request);
+        for (const item of normalizedItems) {
+          const { productId, qty, color, size } = item;
           const variant = await env.DB.prepare("SELECT stock, extra_price FROM variants WHERE product_id = ? AND color = ? AND size = ?").bind(productId, color, size).first();
-          if (!variant || variant.stock < qty) return jsonResponse({ error: `موجودی محصول «${sanitize(item.name, 60)}» کافی نیست` }, 400, env, request);
+          if (!variant || variant.stock < qty) return jsonResponse({ error: `موجودی محصول «${item.name || "انتخاب‌شده"}» کافی نیست` }, 400, env, request);
           const product = await env.DB.prepare("SELECT name, price FROM products WHERE id = ? AND active = 1").bind(productId).first();
           if (!product) return jsonResponse({ error: "یکی از محصولات نامعتبر است" }, 400, env, request);
           const realPrice = product.price + (variant.extra_price || 0);
@@ -547,7 +580,8 @@ export default {
           const verifyReq = await fetch(URL_DIGIPAY_VERIFY, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "Agent": "WEB", "Digipay-Version": "2022-02-02" }, body: JSON.stringify({ trackingCode: token }) });
           const verifyRes = await verifyReq.json();
           if (!verifyRes.result || verifyRes.result.status !== 0) throw new Error(verifyRes.result?.message || "خطا در تایید پرداخت");
-          if (verifyRes.amount && Number(verifyRes.amount) !== Math.round(payment.amount * 10)) throw new Error("مبلغ پرداخت نامعتبر است");
+          // Require an explicit exact amount from the provider before confirming payment.
+          if (!Number.isFinite(Number(verifyRes.amount)) || Number(verifyRes.amount) !== Math.round(payment.amount * 10)) throw new Error("مبلغ پرداخت نامعتبر است");
           const updatePayment = await env.DB.prepare("UPDATE payments SET status='verified', ref_number = ?, verified_at = datetime('now') WHERE track_id = ? AND status='pending'").bind(String(verifyRes.rrn || token), token).run();
           if (updatePayment.meta.changes > 0) {
             const updateOrder = await env.DB.prepare("UPDATE orders SET status='confirmed', updated_at = datetime('now') WHERE order_no = ? AND status='pending'").bind(payment.order_no).run();
