@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateOrderItems, getCorsHeaders } from "../worker.js";
+import { aggregateOrderItems, generateOrderNumber, getCorsHeaders } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -35,4 +35,11 @@ test("honors an explicit CORS allowlist", () => {
   const request = new Request("https://api.example.test/api/orders", { headers: { Origin: "https://shop.example.test" } });
   assert.equal(getCorsHeaders(request, { ALLOWED_ORIGINS: "https://shop.example.test" })["Access-Control-Allow-Origin"], "https://shop.example.test");
   assert.equal(getCorsHeaders(request, { ALLOWED_ORIGINS: "https://trusted.example" })["Access-Control-Allow-Origin"], undefined);
+});
+
+test("generates order references with 64 bits of random entropy", () => {
+  const first = generateOrderNumber(123456789);
+  assert.match(first, /^GS-23456789[A-F0-9]{16}$/);
+  const generated = new Set(Array.from({ length: 100 }, () => generateOrderNumber(123456789)));
+  assert.equal(generated.size, 100);
 });

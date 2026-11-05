@@ -492,7 +492,7 @@ export default {
           else if (["اصفهان", "مرکزی", "قزوین", "سمنان", "مازندران", "گلستان", "گیلان", "زنجان", "همدان"].includes(province)) shippingCost = parseInt(settings.shipping_middle) || 45000;
           else shippingCost = parseInt(settings.shipping_other) || 55000;
         }
-        const total = afterDiscount + shippingCost, orderNo = "GS-" + Date.now().toString().slice(-8) + generateRandomHex(2).toUpperCase(), orderDate = new Date().toLocaleString("fa-IR");
+        const total = afterDiscount + shippingCost, orderNo = generateOrderNumber(), orderDate = new Date().toLocaleString("fa-IR");
         const orderInsert = await env.DB.prepare(`INSERT INTO orders (order_no, name, phone, email, address, city, postal_code, note, subtotal, discount, shipping, coupon_code, total, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`).bind(orderNo, name, phone, email, `${province} - ${city} - ${address}`, city, postalCode, note, subtotal, discount, shippingCost, appliedCoupon, total).run();
         const orderId = orderInsert.meta.last_row_id;
         const itemStatements = verifiedItems.map(item => env.DB.prepare("INSERT INTO order_items (order_id, product_id, name, color, size, qty, price) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(orderId, item.productId, item.name, item.color, item.size, item.qty, item.price));
