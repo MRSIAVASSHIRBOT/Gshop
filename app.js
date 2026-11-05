@@ -658,6 +658,11 @@ function renderGrid() {
   const grid = $('#grid');
   if (!grid) return;
   const list = getFiltered();
+  const resultCount = $('#catalogResultCount');
+  const clearFilters = $('#clearCatalogFilters');
+  const hasActiveFilters = Boolean(state.search || state.category || state.filter !== 'all' || state.sort !== 'default');
+  if (resultCount) resultCount.textContent = `نمایش ${list.length.toLocaleString('fa-IR')} محصول از ${state.products.length.toLocaleString('fa-IR')} محصول`;
+  if (clearFilters) clearFilters.hidden = !hasActiveFilters;
 
   if (!list.length) {
     grid.innerHTML = `<div class="empty-state">
@@ -674,10 +679,11 @@ function renderGrid() {
 }
 
 window.resetFilters = function resetFilters() {
-  state.search = ''; state.category = ''; state.filter = 'all';
+  state.search = ''; state.category = ''; state.filter = 'all'; state.sort = 'default';
   const si = $('#searchInput'); if (si) si.value = '';
   const cs = $('#categorySelect'); if (cs) cs.value = '';
-  $$('.toolbar .chip').forEach(x => x.classList.remove('active'));
+  const sort = $('#sortSelect'); if (sort) sort.value = 'default';
+  $('.toolbar .chip').forEach(x => x.classList.remove('active'));
   const allChip = $('.toolbar .chip[data-filter="all"]');
   if (allChip) allChip.classList.add('active');
   renderGrid();
@@ -2230,6 +2236,8 @@ function bindGlobal() {
   history.pushState(null, '', location.href);
 
   // Search & Filters
+  const clearCatalogFilters = $('#clearCatalogFilters');
+  if (clearCatalogFilters) clearCatalogFilters.onclick = () => window.resetFilters();
   const searchInput = $('#searchInput');
   if (searchInput) {
     const debouncedSearch = debounce((v) => { state.search = v; renderGrid(); }, 220);

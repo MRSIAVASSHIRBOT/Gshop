@@ -54,6 +54,7 @@
 </script>
 </head>
 <body>
+<a class="skip-link" href="#products">رفتن به فروشگاه</a>
 
 <div class="scroll-progress"><div class="scroll-progress__bar" id="scrollBar"></div></div>
 <div class="offline-banner" id="offlineBanner">📡 اتصال اینترنت قطع است</div>
@@ -71,7 +72,7 @@
   </div>
 </div>
 
-<nav class="nav" id="nav">
+<nav class="nav" id="nav" aria-label="ناوبری اصلی">
   <div class="wrap nav__inner">
     <a href="#" class="nav__brand" data-nav="home"><span id="brandName">G_SHOP</span><span class="dot">.</span></a>
     <div class="nav__links">
@@ -218,7 +219,7 @@
       <h2>فروشگاه</h2>
       <p>همه محصولات — موجودی لحظه‌ای، اضافه کردن سریع به سبد.</p>
     </div>
-    <div class="toolbar reveal">
+    <div class="toolbar reveal" role="search" aria-label="جستجو و فیلتر محصولات">
       <div class="toolbar__search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="searchInput" placeholder="جستجوی محصول..." aria-label="جستجو" autocomplete="off">
@@ -239,7 +240,11 @@
         <option value="newest">جدیدترین</option>
       </select>
     </div>
-    <div class="grid" id="grid"></div>
+    <div class="catalog-meta" aria-live="polite" aria-atomic="true">
+      <p id="catalogResultCount">در حال آماده‌سازی محصولات…</p>
+      <button type="button" class="catalog-reset" id="clearCatalogFilters" hidden>پاک کردن فیلترها <span aria-hidden="true">×</span></button>
+    </div>
+    <div class="grid" id="grid" aria-live="polite" aria-busy="false"></div>
   </div>
 </section>
 
