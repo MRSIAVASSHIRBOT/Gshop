@@ -132,6 +132,26 @@ function safeCompare(a, b) {
   return result === 0;
 }
 
+/**
+ * Detect supported raster image formats from their file signature.
+ * Do not trust upstream Content-Type headers for downloaded Telegram files.
+ */
+export function detectImageContentType(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return "image/png";
+  if (bytes.length >= 6) {
+    const signature = String.fromCharCode(...bytes.subarray(0, 6));
+    if (signature === "GIF87a" || signature === "GIF89a") return "image/gif";
+  }
+  if (bytes.length >= 12 &&
+      String.fromCharCode(...bytes.subarray(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.subarray(8, 12)) === "WEBP") return "image/webp";
+  return null;
+}
+
 const rateLimitCache = new Map();
 function checkRateLimit(key, maxAttempts, windowMs) {
   const now = Date.now();
@@ -381,18 +401,47 @@ export default {
 
     try {
       if (path.startsWith("/api/img/") && method === "GET") {
-        if (!checkRateLimit(`img:${clientIp}`, 300, 60000)) return new Response("Too Many Requests", { status: 429 });
-        const fileId = decodeURIComponent(path.slice(9));
-        if (!fileId || fileId.length > 300 || fileId.includes("..")) return new Response("Invalid Request", { status: 400 });
+        if (!checkRateLimit(`img:${clientIp}`, 300, 60000)) return new Response("Too Many Requests", { status: 429, headers: securityHeaders });
+        let fileId;
+        try { fileId = decodeURIComponent(path.slice(9)); } catch { return new Response("Invalid Request", { status: 400, headers: securityHeaders }); }
+        if (!fileId || fileId.length > 300 || fileId.includes("..")) return new Response("Invalid Request", { status: 400, headers: securityHeaders });
+        if (!env.TELEGRAM_BOT_TOKEN) return new Response("Image service is not configured", { status: 503, headers: securityHeaders });
+
         const tgFileReq = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`);
-        const tgFileData = await tgFileReq.json();
-        if (!tgFileData.ok) return new Response("Not Found", { status: 404, headers: securityHeaders });
-        const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${tgFileData.result.file_path}`;
+        if (!tgFileReq.ok) return new Response("Image provider unavailable", { status: 502, headers: securityHeaders });
+        let tgFileData;
+        try { tgFileData = await tgFileReq.json(); } catch { return new Response("Invalid image provider response", { status: 502, headers: securityHeaders }); }
+        const filePath = tgFileData?.result?.file_path;
+        if (!tgFileData?.ok || typeof filePath !== "string" || !filePath || filePath.startsWith("/") || filePath.split("/").includes("..")) {
+          return new Response("Image not found", { status: 404, headers: securityHeaders });
+        }
+
+        const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath.split("/").map(encodeURIComponent).join("/")}`;
         const fileRes = await fetch(fileUrl);
-        if (!fileRes.ok) return new Response("Upstream Error", { status: 502 });
-        const contentType = fileRes.headers.get("Content-Type") || "image/jpeg";
-        if (!contentType.startsWith("image/")) return new Response("Not an Image", { status: 400 });
-        return new Response(fileRes.body, { headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000, immutable", "Access-Control-Allow-Origin": "*", ...securityHeaders } });
+        if (!fileRes.ok) return new Response("Image provider download failed", { status: 502, headers: securityHeaders });
+
+        const declaredLength = Number(fileRes.headers.get("Content-Length"));
+        const maxImageBytes = 20 * 1024 * 1024;
+        if (Number.isFinite(declaredLength) && declaredLength > maxImageBytes) {
+          return new Response("Image is too large", { status: 413, headers: securityHeaders });
+        }
+
+        const imageBytes = new Uint8Array(await fileRes.arrayBuffer());
+        if (!imageBytes.length) return new Response("Empty image", { status: 502, headers: securityHeaders });
+        if (imageBytes.byteLength > maxImageBytes) return new Response("Image is too large", { status: 413, headers: securityHeaders });
+
+        const contentType = detectImageContentType(imageBytes);
+        if (!contentType) return new Response("Unsupported or invalid image content", { status: 415, headers: securityHeaders });
+
+        return new Response(imageBytes, {
+          headers: {
+            "Content-Type": contentType,
+            "Content-Length": String(imageBytes.byteLength),
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Access-Control-Allow-Origin": "*",
+            ...securityHeaders
+          }
+        });
       }
 
       if (path === "/api/health" && method === "GET") return jsonResponse({ ok: true, version: "18.1" }, 200, env, request);
