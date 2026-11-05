@@ -54,7 +54,7 @@ const securityHeaders = {
   "Cross-Origin-Resource-Policy": "same-origin"
 };
 
-function getCorsHeaders(request, env) {
+export function getCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
   const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string"
     ? env.ALLOWED_ORIGINS.split(",").map(value => value.trim()).filter(Boolean)
