@@ -43,3 +43,19 @@ test("generates order references with 64 bits of random entropy", () => {
   const generated = new Set(Array.from({ length: 100 }, () => generateOrderNumber(123456789)));
   assert.equal(generated.size, 100);
 });
+
+
+test("detects JPEG, PNG, GIF, and WebP by file signature", async () => {
+  const { detectImageContentType } = await import("../worker.js");
+  assert.equal(detectImageContentType(Uint8Array.from([0xff, 0xd8, 0xff, 0x00])), "image/jpeg");
+  assert.equal(detectImageContentType(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "image/png");
+  assert.equal(detectImageContentType(new TextEncoder().encode("GIF89a")), "image/gif");
+  assert.equal(detectImageContentType(new TextEncoder().encode("RIFF0000WEBP")), "image/webp");
+});
+
+test("rejects unsupported or truncated image signatures", async () => {
+  const { detectImageContentType } = await import("../worker.js");
+  assert.equal(detectImageContentType(new TextEncoder().encode("<html>not an image</html>")), null);
+  assert.equal(detectImageContentType(Uint8Array.from([0xff, 0xd8])), null);
+  assert.equal(detectImageContentType(new Uint8Array()), null);
+});
