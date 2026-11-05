@@ -694,9 +694,9 @@ window.resetFilters = function resetFilters() {
   const si = $('#searchInput'); if (si) si.value = '';
   const cs = $('#categorySelect'); if (cs) cs.value = '';
   const sort = $('#sortSelect'); if (sort) sort.value = 'default';
-  $$('.toolbar .chip').forEach(x => x.classList.remove('active'));
+  $('.toolbar .chip').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
   const allChip = $('.toolbar .chip[data-filter="all"]');
-  if (allChip) allChip.classList.add('active');
+  if (allChip) { allChip.classList.add('active'); allChip.setAttribute('aria-pressed', 'true'); }
   renderGrid();
 };
 
@@ -2277,8 +2277,8 @@ function bindGlobal() {
 
   document.querySelectorAll('.toolbar .chip').forEach(c => {
     c.onclick = () => {
-      document.querySelectorAll('.toolbar .chip').forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
+      document.querySelectorAll('.toolbar .chip').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+      c.classList.add('active'); c.setAttribute('aria-pressed', 'true');
       state.filter = c.dataset.filter;
       renderGrid();
     };

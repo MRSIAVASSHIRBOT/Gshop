@@ -3202,3 +3202,9 @@ button:disabled{cursor:not-allowed}
 }
 @media(max-width:380px){.prod-admin__layout{grid-template-columns:1fr}.prod-admin__layout>div:first-child{width:100%;max-width:150px}.ocard__actions{grid-template-columns:1fr}.checkout-steps{gap:5px}}
 @media(prefers-reduced-motion:reduce){.admin .tab,.prod-admin,.ocard,.gallery__thumb,.checkout-steps li{transition:none!important;animation:none!important}}
+
+.admin-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 20px}
+.admin-section-head h3{font-size:20px;margin:0 0 5px;color:var(--text)}
+.admin-section-head p{font-size:12px;color:var(--dim);margin:0}
+.admin-section-head>span{font-size:11px;color:var(--lime);border:1px solid var(--glass-line);border-radius:100px;padding:7px 11px}
+@media(max-width:700px){.admin-section-head{align-items:flex-start;flex-direction:column}.admin-section-head h3{font-size:17px}}

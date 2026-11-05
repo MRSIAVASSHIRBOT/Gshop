@@ -166,6 +166,7 @@ async function loadDashboard() {
     const lowItems = Array.isArray(low.items) ? low.items : [];
 
     el.innerHTML = `
+      <header class="admin-section-head"><div><h3>نمای کلی فروشگاه</h3><p>خلاصه سفارش‌ها، درآمد و وضعیت موجودی</p></div><span>داشبورد مدیریت</span></header>
       <div class="stats">
         <div class="stat"><div class="stat__l">تعداد سفارشات</div><div class="stat__v lime">${fmtNum(s.totalOrders)}</div></div>
         <div class="stat"><div class="stat__l">درآمد کل</div><div class="stat__v green" style="font-size:16px">${fmt(s.revenue)}</div></div>
