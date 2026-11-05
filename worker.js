@@ -161,6 +161,11 @@ function generateRandomHex(length = 32) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Create a customer-facing reference with 64 bits of cryptographic randomness. */
+export function generateOrderNumber(timestamp = Date.now()) {
+  return `GS-${String(timestamp).slice(-8)}${generateRandomHex(8).toUpperCase()}`;
+}
+
 // ==========================================
 // 3. Telegram Integration
 // ==========================================
