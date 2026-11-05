@@ -683,7 +683,7 @@ window.resetFilters = function resetFilters() {
   const si = $('#searchInput'); if (si) si.value = '';
   const cs = $('#categorySelect'); if (cs) cs.value = '';
   const sort = $('#sortSelect'); if (sort) sort.value = 'default';
-  $('.toolbar .chip').forEach(x => x.classList.remove('active'));
+  $$('.toolbar .chip').forEach(x => x.classList.remove('active'));
   const allChip = $('.toolbar .chip[data-filter="all"]');
   if (allChip) allChip.classList.add('active');
   renderGrid();
