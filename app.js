@@ -360,6 +360,17 @@ function updateScrollLock() {
   const anyOpen = openSelectors.some(sel => $(sel)?.classList.contains('on'));
   document.body.classList.toggle('no-scroll', anyOpen);
 }
+let modalReturnFocus = null;
+function focusModalDialog() {
+  const box = $('#modalBox'); if (!box) return;
+  const active = document.activeElement; if (active && !box.contains(active)) modalReturnFocus = active;
+  const target = box.querySelector('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])') || box;
+  target.focus({ preventScroll: true });
+}
+function restoreModalFocus() {
+  const target = modalReturnFocus; modalReturnFocus = null;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus({ preventScroll: true });
+}
 
 /* ---------- Local Storage (Load / Save) ---------- */
 function loadLocal() {
@@ -658,6 +669,11 @@ function renderGrid() {
   const grid = $('#grid');
   if (!grid) return;
   const list = getFiltered();
+  const resultCount = $('#catalogResultCount');
+  const clearFilters = $('#clearCatalogFilters');
+  const hasActiveFilters = Boolean(state.search || state.category || state.filter !== 'all' || state.sort !== 'default');
+  if (resultCount) resultCount.textContent = `نمایش ${list.length.toLocaleString('fa-IR')} محصول از ${state.products.length.toLocaleString('fa-IR')} محصول`;
+  if (clearFilters) clearFilters.hidden = !hasActiveFilters;
 
   if (!list.length) {
     grid.innerHTML = `<div class="empty-state">
@@ -674,12 +690,13 @@ function renderGrid() {
 }
 
 window.resetFilters = function resetFilters() {
-  state.search = ''; state.category = ''; state.filter = 'all';
+  state.search = ''; state.category = ''; state.filter = 'all'; state.sort = 'default';
   const si = $('#searchInput'); if (si) si.value = '';
   const cs = $('#categorySelect'); if (cs) cs.value = '';
-  $$('.toolbar .chip').forEach(x => x.classList.remove('active'));
+  const sort = $('#sortSelect'); if (sort) sort.value = 'default';
+  $('.toolbar .chip').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
   const allChip = $('.toolbar .chip[data-filter="all"]');
-  if (allChip) allChip.classList.add('active');
+  if (allChip) { allChip.classList.add('active'); allChip.setAttribute('aria-pressed', 'true'); }
   renderGrid();
 };
 
@@ -1081,6 +1098,7 @@ function openCompareModal() {
   $('#cmpClear').onclick = () => { state.compare = []; saveCompare(); renderGrid(); renderRecent(); close(); };
   modal.onclick = e => { if (e.target === modal) close(); };
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -1177,7 +1195,7 @@ async function openProduct(id) {
               <button type="button" class="gallery__nav gallery__nav--next" id="galNext" aria-label="بعدی"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
               <div class="gallery__counter" id="galCounter">۱ / ${nf(gallery.length)}</div>
               <div class="gallery__thumbs">
-                ${gallery.map((g, i) => `<div class="gallery__thumb ${i === 0 ? 'on' : ''}" data-idx="${i}" role="button" tabindex="0" aria-label="تصویر ${nf(i+1)}"><img src="${esc(g)}" alt=""></div>`).join('')}
+                ${gallery.map((g, i) => `<button type="button" class="gallery__thumb ${i === 0 ? 'on' : ''}" data-idx="${i}" aria-pressed="${i === 0}" aria-label="نمایش تصویر ${nf(i+1)}"><img src="${esc(g)}" alt=""></button>`).join('')}
               </div>
             ` : ''}
           </div>
@@ -1192,7 +1210,7 @@ async function openProduct(id) {
               ${colors.map(c => {
                 const avail = colorStock(p, c) > 0;
                 const sel = c === selectedColor;
-                return `<button type="button" class="chip ${sel ? 'active' : ''}" data-color="${esc(c)}" ${!avail ? 'disabled style="opacity:.35;cursor:not-allowed"' : ''}>${esc(c)}${!avail ? ' ✕' : ''}</button>`;
+                return `<button type="button" class="chip ${sel ? 'active' : ''}" data-color="${esc(c)}" aria-pressed="${sel}" aria-label="رنگ ${esc(c)}${!avail ? ', ناموجود' : ''}" ${!avail ? 'disabled style="opacity:.35;cursor:not-allowed"' : ''}>${esc(c)}${!avail ? ' ✕' : ''}</button>`;
               }).join('')}
             </div>
 
@@ -1206,12 +1224,12 @@ async function openProduct(id) {
                 const avail = q > 0;
                 const sel = s === selectedSize && avail;
                 const lbl = SIZE_LABELS[s];
-                return `<button type="button" class="size-btn ${sel ? 'on' : ''}" data-size="${esc(s)}" ${!avail ? 'disabled' : ''}>${esc(s)}${lbl ? `<small>${lbl}</small>` : ''}</button>`;
+                return `<button type="button" class="size-btn ${sel ? 'on' : ''}" data-size="${esc(s)}" aria-pressed="${sel}" aria-label="سایز ${esc(s)}${!avail ? ', ناموجود' : ''}" ${!avail ? 'disabled' : ''}>${esc(s)}${lbl ? `<small>${lbl}</small>` : ''}</button>`;
               }).join('')}
             </div>
 
-            <div style="font-size:12px;color:${stockOfSize > 0 ? 'var(--green)' : 'var(--red)'};margin-top:14px">
-              ${stockOfSize > 0 ? `✓ موجودی این سایز: ${fmtNum(stockOfSize)} عدد` : '✕ این سایز موجود نیست'}
+            <div id="variantStockStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:12px;color:${stockOfSize > 0 ? 'var(--green)' : 'var(--red)'};margin-top:14px">
+              ${stockOfSize > 0 ? `✓ موجودی ${esc(selectedColor)} / ${esc(selectedSize)}: ${fmtNum(stockOfSize)} عدد` : `✕ ${esc(selectedColor)} / ${esc(selectedSize)} موجود نیست`}
             </div>
 
             ${stockOfSize === 0
@@ -1262,7 +1280,7 @@ async function openProduct(id) {
       galleryImg.src = gallery[currentImgIdx];
       zoomed = false;
       galleryMain.classList.remove('zoom');
-      box.querySelectorAll('.gallery__thumb').forEach((x, i) => x.classList.toggle('on', i === currentImgIdx));
+      box.querySelectorAll('.gallery__thumb').forEach((x, i) => { x.classList.toggle('on', i === currentImgIdx); x.setAttribute('aria-pressed', String(i === currentImgIdx)); });
       const counter = $('#galCounter');
       if (counter) counter.textContent = nf(currentImgIdx + 1) + ' / ' + nf(gallery.length);
     }
@@ -1291,7 +1309,6 @@ async function openProduct(id) {
     box.querySelectorAll('.gallery__thumb').forEach(t => {
       const handler = (e) => { e.stopPropagation(); goToImage(Number(t.dataset.idx)); };
       t.onclick = handler;
-      t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); };
     });
 
     if ($('#galPrev')) $('#galPrev').onclick = (e) => { e.stopPropagation(); goToImage(currentImgIdx - 1); };
@@ -1345,6 +1362,7 @@ async function openProduct(id) {
   modal.onclick = e => { if (e.target === modal) close(); };
   render();
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -1428,6 +1446,7 @@ function showSizeGuide() {
   $('#sgClose').onclick = () => { modal.classList.remove('on'); state.modalOpen = false; updateScrollLock(); };
   modal.onclick = e => { if (e.target === modal) { modal.classList.remove('on'); state.modalOpen = false; updateScrollLock(); } };
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -1463,6 +1482,7 @@ function showNotifyModal(p, color, size) {
     }
   };
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -1518,6 +1538,7 @@ function showReviewModal(productId, onDone) {
     } catch (e) { err.textContent = e.message; err.classList.add('on'); }
   };
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -1739,7 +1760,7 @@ function openCheckout({ subtotal, discount, coupon }) {
 
   box.innerHTML = `
     <button type="button" class="close-x" id="ckClose" style="position:absolute;top:16px;left:16px" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-    <h2>تکمیل سفارش</h2><p class="sub">اطلاعات ارسال را کامل وارد کنید.</p>
+    <h2 id="checkoutTitle">تکمیل سفارش</h2><ol class="checkout-steps" aria-label="مراحل خرید"><li>سبد خرید</li><li aria-current="step">اطلاعات ارسال</li><li>ثبت سفارش</li></ol><p class="sub">اطلاعات ارسال را کامل وارد کنید. موارد ستاره‌دار الزامی‌اند.</p>
     ${saved.address ? `
       <div class="saved-address">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
@@ -1751,17 +1772,17 @@ function openCheckout({ subtotal, discount, coupon }) {
         </div>
       </div>
     ` : ''}
-    <div class="field"><label>نام و نام خانوادگی *</label><input type="text" id="ckName" placeholder="مثلاً علی محمدی" value="${esc(saved.name || '')}" autocomplete="name"></div>
+    <div class="field"><label for="ckName">نام و نام خانوادگی *</label><input type="text" id="ckName" placeholder="مثلاً علی محمدی" value="${esc(saved.name || '')}" autocomplete="name" aria-describedby="ckErr" required aria-required="true"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="field"><label>شماره موبایل *</label><input type="tel" id="ckPhone" placeholder="۰۹۱۲۱۲۳۴۵۶۷" value="${esc(saved.phone || '')}" inputmode="tel" autocomplete="tel"></div>
-      <div class="field"><label>ایمیل (اختیاری)</label><input type="email" id="ckEmail" placeholder="name@mail.com" value="${esc(saved.email || '')}" autocomplete="email"></div>
+      <div class="field"><label for="ckPhone">شماره موبایل *</label><input type="tel" id="ckPhone" placeholder="۰۹۱۲۱۲۳۴۵۶۷" value="${esc(saved.phone || '')}" inputmode="tel" autocomplete="tel" aria-describedby="ckErr" required aria-required="true"></div>
+      <div class="field"><label for="ckEmail">ایمیل (اختیاری)</label><input type="email" id="ckEmail" placeholder="name@mail.com" value="${esc(saved.email || '')}" autocomplete="email" aria-describedby="ckErr"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="field"><label>استان *</label><select id="ckProvince" autocomplete="address-level1"><option value="">انتخاب کنید...</option>${IRAN_PROVINCES.map(p => `<option value="${esc(p)}" ${p === initProvince ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
-      <div class="field"><label>شهر *</label><input type="text" id="ckCity" placeholder="مثلاً تهران" value="${esc(saved.city || '')}" autocomplete="address-level2"></div>
+      <div class="field"><label for="ckProvince">استان *</label><select id="ckProvince" autocomplete="address-level1" aria-describedby="ckErr" required aria-required="true"><option value="">انتخاب کنید...</option>${IRAN_PROVINCES.map(p => `<option value="${esc(p)}" ${p === initProvince ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
+      <div class="field"><label for="ckCity">شهر *</label><input type="text" id="ckCity" placeholder="مثلاً تهران" value="${esc(saved.city || '')}" autocomplete="address-level2" aria-describedby="ckErr" required aria-required="true"></div>
     </div>
-    <div class="field"><label>کد پستی (۱۰ رقم) *</label><input type="text" id="ckPostal" placeholder="۱۲۳۴۵۶۷۸۹۰" value="${esc(saved.postal || '')}" inputmode="numeric" maxlength="10" autocomplete="postal-code"></div>
-    <div class="field"><label>آدرس کامل *</label><textarea id="ckAddress" placeholder="خیابان، کوچه، پلاک، واحد..." autocomplete="street-address">${esc(saved.address || '')}</textarea></div>
+    <div class="field"><label for="ckPostal">کد پستی (۱۰ رقم) *</label><input type="text" id="ckPostal" placeholder="۱۲۳۴۵۶۷۸۹۰" value="${esc(saved.postal || '')}" inputmode="numeric" maxlength="10" autocomplete="postal-code" aria-describedby="ckErr" required aria-required="true"></div>
+    <div class="field"><label for="ckAddress">آدرس کامل *</label><textarea id="ckAddress" placeholder="خیابان، کوچه، پلاک، واحد..." autocomplete="street-address" aria-describedby="ckErr" required aria-required="true">${esc(saved.address || '')}</textarea></div>
     <div class="field"><label>یادداشت (اختیاری)</label><input type="text" id="ckNote" placeholder="مثلاً بسته‌بندی کادویی"></div>
     <label class="save-info-toggle"><input type="checkbox" id="ckSave" ${saved.name ? 'checked' : ''}><span>ذخیره اطلاعات برای خریدهای بعدی</span></label>
     <input type="text" id="ckWebsite" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -1771,7 +1792,7 @@ function openCheckout({ subtotal, discount, coupon }) {
       <div class="ctotals__row"><span>هزینه ارسال</span><span id="ckShipVal" style="color:${initShip === 0 ? 'var(--green)' : 'var(--text)'}">${initShip === 0 ? 'رایگان ✓' : fmt(initShip)}</span></div>
       <div class="ctotals__row big"><span>مبلغ نهایی</span><span id="ckTotalVal">${fmt(initTotal)}</span></div>
     </div>
-    <div class="err" id="ckErr"></div>
+    <div class="err" id="ckErr" role="alert" aria-live="assertive" aria-atomic="true"></div>
     <button type="button" class="checkout-btn" id="ckSubmit" style="margin-top:12px">ثبت سفارش</button>
   `;
 
@@ -1821,17 +1842,17 @@ function openCheckout({ subtotal, discount, coupon }) {
 
     const err = $('#ckErr');
     err.classList.remove('on');
-    const showErr = (msg) => { err.textContent = msg; err.classList.add('on'); err.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+    const showErr = (msg, selector) => { box.querySelectorAll('[aria-invalid="true"]').forEach(field => field.removeAttribute('aria-invalid')); err.textContent = msg; err.classList.add('on'); const field = selector ? $(selector) : null; if (field) { field.setAttribute('aria-invalid', 'true'); field.focus({ preventScroll: true }); } err.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
 
-    if (!name || name.length < 3) return showErr('نام و نام خانوادگی را کامل وارد کنید');
+    if (!name || name.length < 3) return showErr('نام و نام خانوادگی را کامل وارد کنید', '#ckName');
     const pd = phone.replace(/\D/g, '');
-    if (!isMobile(pd)) return showErr('شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
-    if (email && !isEmail(email)) return showErr('ایمیل نامعتبر است');
-    if (!province) return showErr('استان را انتخاب کنید');
-    if (!city || city.length < 2) return showErr('نام شهر را وارد کنید');
+    if (!isMobile(pd)) return showErr('شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد', '#ckPhone');
+    if (email && !isEmail(email)) return showErr('ایمیل نامعتبر است', '#ckEmail');
+    if (!province) return showErr('استان را انتخاب کنید', '#ckProvince');
+    if (!city || city.length < 2) return showErr('نام شهر را وارد کنید', '#ckCity');
     const pcd = postal.replace(/\D/g, '');
-    if (!isPostal(pcd)) return showErr('کد پستی باید ۱۰ رقم باشد');
-    if (!address || address.length < 10) return showErr('آدرس کامل را وارد کنید (حداقل ۱۰ کاراکتر)');
+    if (!isPostal(pcd)) return showErr('کد پستی باید ۱۰ رقم باشد', '#ckPostal');
+    if (!address || address.length < 10) return showErr('آدرس کامل را وارد کنید (حداقل ۱۰ کاراکتر)', '#ckAddress');
 
     const btn = $('#ckSubmit');
     btn.disabled = true;
@@ -1859,6 +1880,7 @@ function openCheckout({ subtotal, discount, coupon }) {
 
   modal.onclick = e => { if (e.target === modal) closeCheckout(); };
   modal.classList.add('on');
+  focusModalDialog();
   state.modalOpen = true;
   updateScrollLock();
 }
@@ -2207,15 +2229,26 @@ function bindGlobal() {
   const scrim = $('#scrim');
   if (scrim) scrim.onclick = () => { closeCartDrawer(); closeWishDrawer(); closeOrdersDrawer(); };
 
-  // Escape key
+  // Keyboard focus loop and Escape handling for the active dialog.
+  const modalEl = $('#modal'), modalBox = $('#modalBox');
+  if (modalEl && modalBox && typeof MutationObserver !== 'undefined') {
+    const modalObserver = new MutationObserver(() => { if (!modalEl.classList.contains('on')) restoreModalFocus(); });
+    modalObserver.observe(modalEl, { attributes: true, attributeFilter: ['class'] });
+  }
   document.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && modalEl?.classList.contains('on') && modalBox) {
+      const focusable = [...modalBox.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')].filter(el => el.getClientRects().length);
+      if (!focusable.length) { e.preventDefault(); modalBox.focus(); return; }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !modalBox.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !modalBox.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      return;
+    }
     if (e.key !== 'Escape') return;
     closeCartDrawer(); closeWishDrawer(); closeMobileMenu(); closeOrdersDrawer();
-    $('#modal')?.classList.remove('on');
-    $('#confirmOverlay')?.classList.remove('on');
+    $('#modal')?.classList.remove('on'); $('#confirmOverlay')?.classList.remove('on');
     const sheet = $('#shareSheet'); if (sheet) sheet.classList.remove('on');
-    state.modalOpen = false;
-    updateScrollLock();
+    state.modalOpen = false; updateScrollLock();
   });
 
   // Back button closes modal
@@ -2230,6 +2263,8 @@ function bindGlobal() {
   history.pushState(null, '', location.href);
 
   // Search & Filters
+  const clearCatalogFilters = $('#clearCatalogFilters');
+  if (clearCatalogFilters) clearCatalogFilters.onclick = () => window.resetFilters();
   const searchInput = $('#searchInput');
   if (searchInput) {
     const debouncedSearch = debounce((v) => { state.search = v; renderGrid(); }, 220);
@@ -2242,8 +2277,8 @@ function bindGlobal() {
 
   document.querySelectorAll('.toolbar .chip').forEach(c => {
     c.onclick = () => {
-      document.querySelectorAll('.toolbar .chip').forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
+      document.querySelectorAll('.toolbar .chip').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+      c.classList.add('active'); c.setAttribute('aria-pressed', 'true');
       state.filter = c.dataset.filter;
       renderGrid();
     };
