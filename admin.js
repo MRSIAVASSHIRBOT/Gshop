@@ -102,17 +102,17 @@ async function renderAdmin() {
   ];
 
   body.innerHTML = `
-    <div class="tabs" id="adminTabs">
-      ${TABS.map(([t, l]) => `<button type="button" class="tab ${t === 'dashboard' ? 'active' : ''}" data-tab="${t}">${l}</button>`).join('')}
+    <div class="tabs" id="adminTabs" role="tablist" aria-label="بخش‌های پنل مدیریت">
+      ${TABS.map(([t, l]) => `<button type="button" class="tab ${t === 'dashboard' ? 'active' : ''}" id="tab-${t}" role="tab" aria-selected="${t === 'dashboard'}" aria-controls="panel-${t}" tabindex="${t === 'dashboard' ? '0' : '-1'}" data-tab="${t}">${l}</button>`).join('')}
     </div>
-    ${TABS.map(([t]) => `<div class="panel ${t === 'dashboard' ? 'on' : ''}" id="panel-${t}"></div>`).join('')}
+    ${TABS.map(([t]) => `<div class="panel ${t === 'dashboard' ? 'on' : ''}" id="panel-${t}" role="tabpanel" aria-labelledby="tab-${t}" tabindex="0"></div>`).join('')}
   `;
 
   body.querySelectorAll('.tab').forEach(t => {
     t.onclick = () => {
-      body.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      body.querySelectorAll('.tab').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); x.tabIndex = -1; });
       body.querySelectorAll('.panel').forEach(x => x.classList.remove('on'));
-      t.classList.add('active');
+      t.classList.add('active'); t.setAttribute('aria-selected', 'true'); t.tabIndex = 0;
       document.getElementById('panel-' + t.dataset.tab)?.classList.add('on');
       adminState.currentTab = t.dataset.tab;
       loadAdminTab();
@@ -231,8 +231,8 @@ async function loadProductsAdmin() {
 
     el.innerHTML = `
       <div class="filter-bar">
-        <input type="text" id="prodSearch" placeholder="🔍 جستجوی محصول...">
-        <select id="prodStatusFilter">
+        <input type="search" id="prodSearch" aria-label="جستجوی محصولات مدیریت" placeholder="جستجوی محصول...">
+        <select id="prodStatusFilter" aria-label="فیلتر وضعیت محصولات">
           <option value="">همه</option>
           <option value="active">فعال</option>
           <option value="inactive">غیرفعال</option>
@@ -264,8 +264,8 @@ async function loadProductsAdmin() {
         const sizes = [...new Set(variants.map(v => v.size))];
         const isActive = Boolean(p.active);
         return `
-          <div class="prod-admin" style="display:grid;grid-template-columns:100px 1fr;gap:16px;align-items:start">
-            <div style="aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3)"><img src="${esc(p.image)}" style="width:100%;height:100%;object-fit:cover" alt=""></div>
+          <div class="prod-admin prod-admin__layout">
+            <div style="aspect-ratio:4/5;border-radius:10px;overflow:hidden;background:var(--ink-3)"><img src="${esc(p.image)}" style="width:100%;height:100%;object-fit:cover" alt="تصویر ${esc(p.name)}" loading="lazy"></div>
             <div>
               <div class="prod-admin__head" style="margin-bottom:10px">
                 <div>
@@ -871,8 +871,8 @@ async function loadOrders() {
   if (!el) return;
   el.innerHTML = `
     <div class="filter-bar">
-      <input type="text" id="ordSearch" placeholder="🔍 جستجو (شماره، نام، موبایل)">
-      <select id="ordStatus">
+      <input type="search" id="ordSearch" aria-label="جستجوی سفارش‌ها بر اساس شماره، نام یا موبایل" placeholder="جستجوی شماره، نام یا موبایل">
+      <select id="ordStatus" aria-label="فیلتر وضعیت سفارش">
         <option value="">همه وضعیت‌ها</option>
         <option value="pending">در انتظار</option><option value="confirmed">تایید شده</option>
         <option value="shipped">ارسال شده</option><option value="delivered">تحویل شده</option>
@@ -964,7 +964,7 @@ function renderOrdersList(el, orders) {
         <div class="ocard__total">مجموع: <span>${fmt(o.total)}</span>${o.discount > 0 ? `<span style="color:var(--dim);font-size:12px;margin-right:10px">(تخفیف ${fmt(o.discount)})</span>` : ''}</div>
         <div class="ocard__actions">
           <a class="nt-btn" href="${tgLink}" target="_blank" rel="noopener" style="text-decoration:none">✈️ تلگرام</a>
-          <select class="status-sel" data-no="${esc(o.order_no)}">${STATUSES.map(s => `<option value="${s.v}" ${s.v === o.status ? 'selected' : ''}>${s.l}</option>`).join('')}</select>
+          <select class="status-sel" aria-label="وضعیت سفارش ${esc(o.order_no)}" data-no="${esc(o.order_no)}">${STATUSES.map(s => `<option value="${s.v}" ${s.v === o.status ? 'selected' : ''}>${s.l}</option>`).join('')}</select>
           <button type="button" class="nt-btn" data-tracking="${esc(o.order_no)}">📦 رهگیری</button>
           <button type="button" class="nt-btn" data-note="${esc(o.order_no)}">📝 یادداشت</button>
           <button type="button" class="del-btn" data-del="${esc(o.order_no)}">🗑 حذف</button>

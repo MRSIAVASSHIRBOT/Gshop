@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const html=read("../index.html"),app=read("../app.js"),admin=read("../admin.js"),css=read("../styles.css");
+test("product detail gallery, variants and live stock are accessible",()=>{assert.match(app,/gallery__thumb[^\n]*aria-pressed/);assert.match(app,/data-color[^\n]*aria-pressed/);assert.match(app,/data-size[^\n]*aria-pressed/);assert.match(app,/id="variantStockStatus" role="status" aria-live="polite"/);});
+test("checkout has a clear step indicator and field-specific errors",()=>{assert.match(app,/class="checkout-steps" aria-label="مراحل خرید"/);assert.match(app,/role="alert" aria-live="assertive"/);assert.match(app,/aria-invalid/);assert.match(app,/showErr\('شماره موبایل[^\n]+#ckPhone/);});
+test("modal uses dialog semantics and keyboard focus management",()=>{assert.match(html,/role="dialog" aria-modal="true"/);assert.match(app,/function focusModalDialog/);assert.match(app,/e\.key === 'Tab'[\s\S]*?modalEl/);assert.match(app,/function restoreModalFocus/);});
+test("admin navigation and search controls are labelled",()=>{assert.match(admin,/role="tablist"/);assert.match(admin,/aria-controls="panel-\$\{t\}"/);assert.match(admin,/aria-labelledby="tab-\$\{t\}"/);assert.match(admin,/aria-label="فیلتر وضعیت سفارش/);assert.match(admin,/aria-label="فیلتر وضعیت محصولات"/);});
+test("admin cards and order actions have mobile layouts",()=>{assert.match(admin,/prod-admin__layout/);assert.match(css,/\.prod-admin__layout\{grid-template-columns:76px/);assert.match(css,/\.ocard__actions\{display:grid;grid-template-columns:repeat\(2/);assert.match(css,/#adminTabs\{display:flex;flex-wrap:nowrap;overflow-x:auto/);});
+test("reduced motion does not re-enable hero animation",()=>{assert.match(css,/prefers-reduced-motion: reduce\)[\s\S]*?\.hero__title em\{animation:none!important\}/);});

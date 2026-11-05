@@ -3128,7 +3128,7 @@ footer{
     transition-duration:.01ms !important;
   }
   .aurora__blob{animation:none}
-  .hero__title em{animation:riseUp 1s ease both}
+  .hero__title em{animation:none!important}
 }
 
 
@@ -3174,3 +3174,31 @@ button:disabled{cursor:not-allowed}
 }
 @media(max-width:380px){.nav__actions{gap:3px}.nav__actions .icon-btn{width:36px;height:40px}.grid{gap:8px}.pcard__info{padding-inline:9px}}
 @media(prefers-reduced-motion:reduce){.skip-link,.catalog-reset,.pcard{transition:none!important}}
+
+/* G_SHOP UX phase 2 — detail, checkout and admin workflows */
+.gallery__thumb{appearance:none;padding:0;font:inherit;display:block}
+.gallery__thumb:focus-visible{outline:3px solid var(--lime);outline-offset:3px}
+.checkout-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:0 0 22px}
+.checkout-steps li{text-align:center;padding:10px 6px;border:1px solid var(--glass-line);border-radius:12px;color:var(--dim);font-size:11px;background:var(--glass-bg)}
+.checkout-steps li[aria-current="step"]{border-color:var(--lime);color:var(--lime);background:color-mix(in srgb,var(--lime) 9%,transparent);font-weight:800}
+.field [aria-invalid="true"]{border-color:var(--red)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 18%,transparent)!important}
+.err[role="alert"]{padding:10px 12px;border:1px solid color-mix(in srgb,var(--red) 35%,transparent);border-radius:10px;background:color-mix(in srgb,var(--red) 8%,transparent);line-height:1.8}
+.prod-admin__layout{display:grid;grid-template-columns:100px minmax(0,1fr);gap:16px;align-items:start}
+.prod-admin__layout>div{min-width:0}
+.prod-admin__layout .actions button,.ocard__actions button,.ocard__actions a,.status-sel{min-height:40px}
+.ocard__actions{align-items:center}
+.filter-bar input{flex:1;min-width:min(240px,100%)}
+#adminTabs{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+@media(max-width:700px){
+ .admin__bar{padding:12px 14px;gap:8px}.admin__bar h2{font-size:17px}.admin__bar>div{gap:6px!important}.admin__bar .btn{padding:9px 12px!important}.admin__body{padding:16px 12px 36px}
+ #adminTabs{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;gap:7px;padding:4px 2px 12px;margin:0 -2px 18px;scroll-snap-type:x proximity}
+ #adminTabs .tab{flex:0 0 auto;scroll-snap-align:start;padding:10px 14px;min-height:42px}
+ .filter-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:9px}.filter-bar input,.filter-bar select{width:100%;min-height:44px;border-radius:12px}
+ .prod-admin{padding:14px;border-radius:14px}.prod-admin__layout{grid-template-columns:76px minmax(0,1fr);gap:12px}.prod-admin__head{align-items:flex-start}
+ .prod-admin__layout .actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.prod-admin__layout .actions button{padding:9px 7px;min-height:42px;white-space:normal}
+ .ocard{padding:14px;border-radius:14px}.ocard__head{align-items:flex-start}.ocard__foot{display:grid;grid-template-columns:1fr;gap:12px}.ocard__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ocard__actions>*{width:100%;justify-content:center;min-width:0}.ocard__actions .status-sel{grid-column:1/-1}
+ .stats{gap:10px}.stat{padding:14px}.stat__v{font-size:20px}.chart{overflow-x:auto}.np-grid{grid-template-columns:1fr!important}
+ .modal{padding:10px}.modal__box{max-height:calc(100dvh - 20px);overflow-y:auto;padding:26px 18px}.checkout-steps li{font-size:10px;padding:9px 3px}
+}
+@media(max-width:380px){.prod-admin__layout{grid-template-columns:1fr}.prod-admin__layout>div:first-child{width:100%;max-width:150px}.ocard__actions{grid-template-columns:1fr}.checkout-steps{gap:5px}}
+@media(prefers-reduced-motion:reduce){.admin .tab,.prod-admin,.ocard,.gallery__thumb,.checkout-steps li{transition:none!important;animation:none!important}}
