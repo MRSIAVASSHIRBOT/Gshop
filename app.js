@@ -1280,7 +1280,7 @@ async function openProduct(id) {
       galleryImg.src = gallery[currentImgIdx];
       zoomed = false;
       galleryMain.classList.remove('zoom');
-      box.querySelectorAll('.gallery__thumb').forEach((x, i) => x.classList.toggle('on', i === currentImgIdx));
+      box.querySelectorAll('.gallery__thumb').forEach((x, i) => { x.classList.toggle('on', i === currentImgIdx); x.setAttribute('aria-pressed', String(i === currentImgIdx)); });
       const counter = $('#galCounter');
       if (counter) counter.textContent = nf(currentImgIdx + 1) + ' / ' + nf(gallery.length);
     }
@@ -1309,7 +1309,6 @@ async function openProduct(id) {
     box.querySelectorAll('.gallery__thumb').forEach(t => {
       const handler = (e) => { e.stopPropagation(); goToImage(Number(t.dataset.idx)); };
       t.onclick = handler;
-      t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); };
     });
 
     if ($('#galPrev')) $('#galPrev').onclick = (e) => { e.stopPropagation(); goToImage(currentImgIdx - 1); };
