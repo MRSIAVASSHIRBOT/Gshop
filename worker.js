@@ -57,18 +57,18 @@ const securityHeaders = {
 export function getCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
   const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string"
-    ? env.ALLOWED_ORIGINS.split(",").map(value => value.trim()).filter(Boolean)
+    ? env.ALLOWED_ORIGINS.split(",").map(value => value.trim()).filter(value => value && value !== "*")
     : [];
   const sameOrigin = origin && origin === new URL(request.url).origin;
-  const allowed = configuredOrigins.includes("*") || configuredOrigins.includes(origin)
-    || (!configuredOrigins.length && sameOrigin);
+  // A wildcard is never a valid CORS grant; if no exact origins remain, same-origin is the only fallback.
+  const allowed = configuredOrigins.includes(origin) || (!configuredOrigins.length && sameOrigin);
   const headers = {
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, Authorization",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
-  if (allowed) headers["Access-Control-Allow-Origin"] = configuredOrigins.includes("*") ? "*" : origin;
+  if (allowed) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 
@@ -288,6 +288,66 @@ async function logAudit(env, action, target, payload, request, ctx) {
 // ==========================================
 let digipayTokenCache = { token: null, expiresAt: 0 };
 
+export async function readBoundedText(response, maxBytes = 64 * 1024) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new TypeError("Response byte limit must be a positive safe integer");
+  }
+  const declaredLength = Number(response.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await response.body?.cancel();
+    throw new Error("پاسخ دیجی‌پی بیش از حد مجاز است");
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("پاسخ دیجی‌پی بیش از حد مجاز است");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("پاسخ دیجی‌پی نامعتبر است");
+  }
+}
+
+export function parseDigipayAccessToken(responseText) {
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error("دیجی‌پی پاسخ نامعتبر داد");
+  }
+  if (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    typeof data.access_token !== "string" ||
+    !data.access_token.trim() ||
+    data.access_token.length > 8192
+  ) {
+    throw new Error("احراز هویت دیجی‌پی ناموفق بود");
+  }
+  return data.access_token;
+}
+
 async function getDigipayAccessToken(env) {
   const now = Date.now();
   if (digipayTokenCache.token && digipayTokenCache.expiresAt > now) {
@@ -296,7 +356,7 @@ async function getDigipayAccessToken(env) {
 
   const clientId = env.DIGIPAY_CLIENT_ID || env.SNAPP_CLIENT_ID;
   const clientSecret = env.DIGIPAY_CLIENT_SECRET || env.SNAPP_CLIENT_SECRET;
-  
+
   if (!clientId || !clientSecret) throw new Error("تنظیمات دیجی‌پی ناقص است");
 
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
@@ -307,32 +367,24 @@ async function getDigipayAccessToken(env) {
 
   const res = await fetch(URL_DIGIPAY_AUTH, {
     method: "POST",
-    headers: { 
+    headers: {
       "Authorization": `Basic ${basicAuth}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body: params.toString()
   });
-
-  const responseText = await res.text();
-  let data;
-  
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`دیجی‌پی پاسخ نامعتبر داد: ${responseText}`);
-  }
-  
-  if (!data.access_token) {
-    throw new Error(`دیجی‌پی: ${data.error_description || data.error || "نام کاربری یا رمز اشتباه است"}`);
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw new Error("احراز هویت دیجی‌پی ناموفق بود");
   }
 
+  const accessToken = parseDigipayAccessToken(await readBoundedText(res));
   digipayTokenCache = {
-    token: data.access_token,
+    token: accessToken,
     expiresAt: now + (50 * 60 * 1000)
   };
 
-  return data.access_token;
+  return accessToken;
 }
 
 // ==========================================
