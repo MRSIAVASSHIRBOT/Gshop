@@ -31,10 +31,9 @@
 تنظیمات اختیاری بر اساس قابلیت‌های مورد استفاده:
 
 - SITE_URL — نشانی اصلی فروشگاه
-- ALLOWED_ORIGINS — فهرست originهای مجاز با جداکننده کاما؛ در حالت پیش‌فرض فقط same-origin مجاز است. از wildcard فقط در صورت نیاز واقعی و آگاهی از پیامدهای CORS استفاده کنید.
+- ALLOWED_ORIGINS — فهرست دقیق originهای مجاز با جداکننده کاما؛ wildcard پذیرفته نمی‌شود و در نبود origin دقیق فقط same-origin مجاز است.
 - ZIBAL_MERCHANT — شناسه پذیرنده زیبال
 - DIGIPAY_CLIENT_ID, DIGIPAY_CLIENT_SECRET, DIGIPAY_USERNAME, DIGIPAY_PASSWORD — configure every DIGIPAY_* credential as a Cloudflare Worker secret binding, never as plain-text variables.
-- ALLOWED_ORIGINS — use an explicit comma-separated list of exact HTTPS origins when cross-origin access is required. Wildcard `*` is not accepted; same-origin requests remain the fallback when no exact origin is configured.
 - TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 - SESSION_HOURS
 
