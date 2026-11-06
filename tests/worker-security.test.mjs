@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, readBoundedText } from "../worker.js";
+import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -59,6 +59,20 @@ test("parses Digipay access tokens without exposing provider error bodies", () =
 test("bounds Digipay authentication response bodies", async () => {
   const response = new Response("x".repeat(64 * 1024 + 1));
   await assert.rejects(readBoundedText(response), /بیش از حد مجاز/);
+});
+
+test("sanitizes Digipay JSON API errors and bounds provider responses", async () => {
+  const marker = "provider-private-error-marker";
+  await assert.rejects(
+    readDigipayJsonResponse(new Response(JSON.stringify({ error_description: marker }), { status: 502 })),
+    error => !error.message.includes(marker)
+  );
+  await assert.rejects(
+    readDigipayJsonResponse(new Response(`invalid-json-${marker}`)),
+    error => !error.message.includes(marker)
+  );
+  const payload = await readDigipayJsonResponse(new Response(JSON.stringify({ result: { status: 0 } })));
+  assert.deepEqual(payload, { result: { status: 0 } });
 });
 
 test("generates order references with 64 bits of random entropy", () => {
