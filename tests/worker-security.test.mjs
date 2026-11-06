@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateOrderItems, generateOrderNumber, getCorsHeaders } from "../worker.js";
+import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, readBoundedText } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -35,6 +35,30 @@ test("honors an explicit CORS allowlist", () => {
   const request = new Request("https://api.example.test/api/orders", { headers: { Origin: "https://shop.example.test" } });
   assert.equal(getCorsHeaders(request, { ALLOWED_ORIGINS: "https://shop.example.test" })["Access-Control-Allow-Origin"], "https://shop.example.test");
   assert.equal(getCorsHeaders(request, { ALLOWED_ORIGINS: "https://trusted.example" })["Access-Control-Allow-Origin"], undefined);
+});
+
+test("never treats a wildcard as a cross-origin CORS grant", () => {
+  const crossOrigin = new Request("https://api.example.test/api/orders", {
+    headers: { Origin: "https://attacker.example" }
+  });
+  assert.equal(getCorsHeaders(crossOrigin, { ALLOWED_ORIGINS: "*" })["Access-Control-Allow-Origin"], undefined);
+
+  const sameOrigin = new Request("https://shop.example.test/api/orders", {
+    headers: { Origin: "https://shop.example.test" }
+  });
+  assert.equal(getCorsHeaders(sameOrigin, { ALLOWED_ORIGINS: "*" })["Access-Control-Allow-Origin"], "https://shop.example.test");
+});
+
+test("parses Digipay access tokens without exposing provider error bodies", () => {
+  assert.equal(parseDigipayAccessToken(JSON.stringify({ access_token: "valid-token" })), "valid-token");
+  const marker = "provider-response-must-not-be-logged";
+  assert.throws(() => parseDigipayAccessToken(`not-json-${marker}`), error => !error.message.includes(marker));
+  assert.throws(() => parseDigipayAccessToken(JSON.stringify({ error_description: marker })), error => !error.message.includes(marker));
+});
+
+test("bounds Digipay authentication response bodies", async () => {
+  const response = new Response("x".repeat(64 * 1024 + 1));
+  await assert.rejects(readBoundedText(response), /بیش از حد مجاز/);
 });
 
 test("generates order references with 64 bits of random entropy", () => {
