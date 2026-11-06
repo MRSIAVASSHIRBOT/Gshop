@@ -328,24 +328,40 @@ export async function readBoundedText(response, maxBytes = 64 * 1024) {
   }
 }
 
-export function parseDigipayAccessToken(responseText) {
+function parseDigipayJsonPayload(responseText) {
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error("دیجی‌پی پاسخ نامعتبر داد");
+    throw new Error("پاسخ دیجی‌پی نامعتبر است");
   }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("پاسخ دیجی‌پی نامعتبر است");
+  }
+  return data;
+}
+
+function requireDigipayAccessToken(data) {
   if (
-    !data ||
-    typeof data !== "object" ||
-    Array.isArray(data) ||
     typeof data.access_token !== "string" ||
     !data.access_token.trim() ||
     data.access_token.length > 8192
   ) {
     throw new Error("احراز هویت دیجی‌پی ناموفق بود");
   }
-  return data.access_token;
+  return data.access_token.trim();
+}
+
+export function parseDigipayAccessToken(responseText) {
+  return requireDigipayAccessToken(parseDigipayJsonPayload(responseText));
+}
+
+export async function readDigipayJsonResponse(response) {
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("سرویس دیجی‌پی در دسترس نیست");
+  }
+  return parseDigipayJsonPayload(await readBoundedText(response));
 }
 
 async function getDigipayAccessToken(env) {
@@ -378,7 +394,7 @@ async function getDigipayAccessToken(env) {
     throw new Error("احراز هویت دیجی‌پی ناموفق بود");
   }
 
-  const accessToken = parseDigipayAccessToken(await readBoundedText(res));
+  const accessToken = requireDigipayAccessToken(await readDigipayJsonResponse(res));
   digipayTokenCache = {
     token: accessToken,
     expiresAt: now + (50 * 60 * 1000)
@@ -664,13 +680,13 @@ export default {
         try {
           const accessToken = await getDigipayAccessToken(env);
           const ticketReq = await fetch(URL_DIGIPAY_TICKET, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "Agent": "WEB", "Digipay-Version": "2022-02-02" }, body: JSON.stringify({ amount: Math.round(order.total * 10), cellNumber: order.phone, providerId: orderNo, callbackUrl: `${url.origin}/api/payment/digipay/verify` }) });
-          const ticketRes = await ticketReq.json();
-          if (!ticketRes.result || ticketRes.result.status !== 0) throw new Error(ticketRes.result?.message || "خطا در ایجاد تیکت دیجی‌پی");
+          const ticketRes = await readDigipayJsonResponse(ticketReq);
+          if (!ticketRes.result || ticketRes.result.status !== 0) throw new Error("خطا در ایجاد تیکت دیجی‌پی");
           const trackId = ticketRes.ticket || ticketRes.trackingCode;
           if (!trackId) throw new Error("کد رهگیری از دیجی‌پی دریافت نشد");
           await env.DB.prepare("INSERT OR REPLACE INTO payments (track_id, order_no, amount, status, created_at) VALUES (?, ?, ?, 'pending', datetime('now'))").bind(trackId, orderNo, order.total).run();
           return jsonResponse({ ok: true, paymentUrl: ticketRes.redirectUrl }, 200, env, request);
-        } catch (error) { return jsonResponse({ error: error.message }, 500, env, request); }
+        } catch { return jsonResponse({ error: "خطا در ایجاد تیکت دیجی‌پی" }, 500, env, request); }
       }
 
       if (path === "/api/payment/digipay/verify" && (method === "POST" || method === "GET")) {
@@ -684,8 +700,8 @@ export default {
         try {
           const accessToken = await getDigipayAccessToken(env);
           const verifyReq = await fetch(URL_DIGIPAY_VERIFY, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "Agent": "WEB", "Digipay-Version": "2022-02-02" }, body: JSON.stringify({ trackingCode: token }) });
-          const verifyRes = await verifyReq.json();
-          if (!verifyRes.result || verifyRes.result.status !== 0) throw new Error(verifyRes.result?.message || "خطا در تایید پرداخت");
+          const verifyRes = await readDigipayJsonResponse(verifyReq);
+          if (!verifyRes.result || verifyRes.result.status !== 0) throw new Error("خطا در تایید پرداخت دیجی‌پی");
           // Require an explicit exact amount from the provider before confirming payment.
           if (!Number.isFinite(Number(verifyRes.amount)) || Number(verifyRes.amount) !== Math.round(payment.amount * 10)) throw new Error("مبلغ پرداخت نامعتبر است");
           const updatePayment = await env.DB.prepare("UPDATE payments SET status='verified', ref_number = ?, verified_at = datetime('now') WHERE track_id = ? AND status='pending'").bind(String(verifyRes.rrn || token), token).run();
@@ -699,7 +715,7 @@ export default {
             }
           }
           return Response.redirect(`${siteUrl}/?payment=success&order=${payment.order_no}`, 302);
-        } catch (error) { ctx.waitUntil(logAudit(env, "digipay_verify_error", token, { error: error.message }, request, ctx)); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
+        } catch { ctx.waitUntil(logAudit(env, "digipay_verify_error", token, { reason_code: "digipay_verify_failed" }, request, ctx)); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
       }
 
       if (path === "/api/admin/login" && method === "POST") {
