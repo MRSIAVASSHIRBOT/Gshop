@@ -389,11 +389,6 @@ async function getDigipayAccessToken(env) {
     },
     body: params.toString()
   });
-  if (!res.ok) {
-    await res.body?.cancel();
-    throw new Error("احراز هویت دیجی‌پی ناموفق بود");
-  }
-
   const accessToken = requireDigipayAccessToken(await readDigipayJsonResponse(res));
   digipayTokenCache = {
     token: accessToken,
