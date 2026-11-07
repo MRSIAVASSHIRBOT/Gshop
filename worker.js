@@ -754,7 +754,7 @@ export default {
 
       if (path === "/api/admin/logout" && method === "POST") {
         const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (token) {
+        if (token && token.length <= 512) {
           const tokenHash = await hashSessionToken(token);
           await env.DB.prepare("DELETE FROM sessions WHERE token = ? OR token = ?").bind(tokenHash, token).run();
         }
