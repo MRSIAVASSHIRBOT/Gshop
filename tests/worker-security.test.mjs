@@ -182,6 +182,14 @@ test("admin login stores only a hash while the raw token remains usable and logo
     headers: { "X-Admin-Token": token }
   }), env, testContext);
   assert.equal(revoked.status, 401);
+
+  const storedAfterLogout = DB.getStoredToken();
+  const malformedLogout = await worker.fetch(new Request("https://shop.example.test/api/admin/logout", {
+    method: "POST",
+    headers: { "X-Admin-Token": "x".repeat(513) }
+  }), env, testContext);
+  assert.equal(malformedLogout.status, 200);
+  assert.equal(DB.getStoredToken(), storedAfterLogout);
 });
 
 test("legacy plaintext sessions are upgraded on first authenticated use", async () => {
