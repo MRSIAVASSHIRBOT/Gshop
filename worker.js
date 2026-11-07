@@ -181,6 +181,15 @@ function generateRandomHex(length = 32) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+export async function hashSessionToken(token) {
+  if (typeof token !== "string" || !token || token.length > 512) {
+    throw new TypeError("Session token must be a non-empty bounded string");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
+}
+
 /** Create a customer-facing reference with 64 bits of cryptographic randomness. */
 export function generateOrderNumber(timestamp = Date.now()) {
   return `GS-${String(timestamp).slice(-8)}${generateRandomHex(8).toUpperCase()}`;
@@ -263,9 +272,26 @@ async function verifyAdminSession(request, env) {
   const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
   if (!token) throw new Error("Unauthorized");
 
-  const session = await env.DB.prepare(
+  const findSession = candidate => env.DB.prepare(
     "SELECT * FROM sessions WHERE token = ? AND expires_at > ?"
-  ).bind(token, Date.now()).first();
+  ).bind(candidate, Date.now()).first();
+
+  const tokenHash = await hashSessionToken(token);
+  let session = await findSession(tokenHash);
+  if (!session) {
+    // Upgrade sessions created before token hashing without invalidating active admins.
+    // The second hashed lookup also handles a concurrent request completing the upgrade.
+    const legacySession = await findSession(token);
+    if (legacySession) {
+      try {
+        await env.DB.prepare("UPDATE sessions SET token = ? WHERE token = ?")
+          .bind(tokenHash, token).run();
+      } catch {
+        // Keep the already authenticated legacy session usable until it expires.
+      }
+    }
+    session = await findSession(tokenHash) || legacySession || null;
+  }
 
   if (!session) throw new Error("Unauthorized");
   return session;
@@ -720,14 +746,18 @@ export default {
         const userOk = safeCompare(username, expectedUser), passOk = safeCompare(password, expectedPass);
         if (!userOk || !passOk) { ctx.waitUntil(logAudit(env, "login_failed", username, { ip: clientIp }, request, ctx)); return jsonResponse({ error: "نام کاربری یا رمز عبور اشتباه است" }, 401, env, request); }
         const token = generateRandomHex(32), expiresAt = Date.now() + (parseInt(env.SESSION_HOURS || "12") * 3600000);
-        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(token, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
+        const tokenHash = await hashSessionToken(token);
+        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(tokenHash, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
         ctx.waitUntil(logAudit(env, "login_success", username, {}, request, ctx));
         return jsonResponse({ token, expiresAt }, 200, env, request);
       }
 
       if (path === "/api/admin/logout" && method === "POST") {
         const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (token) await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+        if (token) {
+          const tokenHash = await hashSessionToken(token);
+          await env.DB.prepare("DELETE FROM sessions WHERE token = ? OR token = ?").bind(tokenHash, token).run();
+        }
         return jsonResponse({ ok: true }, 200, env, request);
       }
 
