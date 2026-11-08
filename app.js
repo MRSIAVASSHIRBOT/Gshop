@@ -642,7 +642,7 @@ function productCardHTML(p, idx = 0) {
   return `
     <article class="pcard reveal" data-pid="${p.id}" role="button" tabindex="0" aria-label="${esc(p.name)}" style="transition-delay:${Math.min(idx * 40, 200)}ms">
       <div class="pcard__img">
-        <img src="${esc(p.image || '')}" alt="${esc(p.name)}" loading="lazy" decoding="async" onerror="this.style.opacity='.3'">
+        <img src="${esc(p.image || '')}" alt="${esc(p.name)}" loading="${idx < 4 ? 'eager' : 'lazy'}" fetchpriority="${idx < 2 ? 'high' : 'auto'}" decoding="async" onerror="this.style.opacity='.3'">
         <div class="pcard__badges">${badges}</div>
         <button class="pcard__wish ${isWished ? 'on' : ''}" data-wish="${p.id}" title="افزودن به علاقه‌مندی" aria-label="افزودن به علاقه‌مندی" aria-pressed="${isWished}">
           <svg viewBox="0 0 24 24" fill="${isWished ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
@@ -2365,10 +2365,9 @@ function bindGlobal() {
     initFAQ();
     initSearchSuggest();
     injectTrustBadges();
-    await loadContent();
-    await loadSettings();
-    initCountdown();   // بعد از loadSettings
-    await loadProducts();
+    // Independent storefront requests run together to reduce the critical startup waterfall.
+    await Promise.all([loadContent(), loadSettings(), loadProducts()]);
+    initCountdown();   // settings are ready before the countdown starts
 
     const params = new URLSearchParams(location.search);
     const pid = params.get('id');
