@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, parseDigipayCallback, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, hashSessionToken, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -128,4 +128,145 @@ test("rejects unsupported or truncated image signatures", async () => {
   assert.equal(detectImageContentType(new TextEncoder().encode("<html>not an image</html>")), null);
   assert.equal(detectImageContentType(Uint8Array.from([0xff, 0xd8])), null);
   assert.equal(detectImageContentType(new Uint8Array()), null);
+});
+
+
+function makeSessionDatabase(initialToken = null, initialExpiry = Date.now() + 60_000) {
+  let storedToken = initialToken;
+  let expiresAt = initialExpiry;
+  return {
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...args) { values = args; return this; },
+        async first() {
+          if (sql.includes("SELECT * FROM sessions")) {
+            return storedToken === values[0] && expiresAt > values[1]
+              ? { token: storedToken, expires_at: expiresAt }
+              : null;
+          }
+          return null;
+        },
+        async run() {
+          if (sql.startsWith("INSERT INTO sessions")) {
+            storedToken = values[0];
+            expiresAt = values[5];
+            return { meta: { changes: 1 } };
+          }
+          if (sql.startsWith("UPDATE sessions SET token")) {
+            if (storedToken === values[1]) {
+              storedToken = values[0];
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 0 } };
+          }
+          if (sql.startsWith("DELETE FROM sessions")) {
+            if (storedToken === values[0] || storedToken === values[1]) {
+              storedToken = null;
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 0 } };
+          }
+          return { meta: { changes: 1 } };
+        }
+      };
+    },
+    getStoredToken() { return storedToken; }
+  };
+}
+
+const testContext = { waitUntil(promise) { Promise.resolve(promise).catch(() => {}); } };
+
+test("session tokens are stored as a domain-prefixed SHA-256 digest", async () => {
+  assert.equal(
+    await hashSessionToken("abc"),
+    "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  );
+  assert.notEqual(await hashSessionToken("abc"), "abc");
+  await assert.rejects(hashSessionToken(""), TypeError);
+  await assert.rejects(hashSessionToken("x".repeat(513)), TypeError);
+});
+
+test("admin login stores only a hash while raw token remains usable and logout revokes it", async () => {
+  const DB = makeSessionDatabase();
+  const env = { DB, ADMIN_USERNAME: "admin", ADMIN_PASSWORD: "correct-password" };
+  const login = await worker.fetch(new Request("https://shop.example.test/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "correct-password" })
+  }), env, testContext);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  assert.match(token, /^[a-f0-9]{64}$/);
+  assert.equal(DB.getStoredToken(), await hashSessionToken(token));
+  assert.notEqual(DB.getStoredToken(), token);
+
+  const authorized = await worker.fetch(new Request("https://shop.example.test/api/admin/me", {
+    headers: { "X-Admin-Token": token }
+  }), env, testContext);
+  assert.equal(authorized.status, 200);
+
+  const logout = await worker.fetch(new Request("https://shop.example.test/api/admin/logout", {
+    method: "POST",
+    headers: { "X-Admin-Token": token }
+  }), env, testContext);
+  assert.equal(logout.status, 200);
+  const revoked = await worker.fetch(new Request("https://shop.example.test/api/admin/me", {
+    headers: { "X-Admin-Token": token }
+  }), env, testContext);
+  assert.equal(revoked.status, 401);
+});
+
+test("legacy plaintext admin sessions are upgraded without invalidating the token", async () => {
+  const legacyToken = "a".repeat(64);
+  const DB = makeSessionDatabase(legacyToken);
+  const env = { DB };
+  const first = await worker.fetch(new Request("https://shop.example.test/api/admin/me", {
+    headers: { "X-Admin-Token": legacyToken }
+  }), env, testContext);
+  assert.equal(first.status, 200);
+  assert.equal(DB.getStoredToken(), await hashSessionToken(legacyToken));
+
+  const second = await worker.fetch(new Request("https://shop.example.test/api/admin/me", {
+    headers: { "X-Admin-Token": legacyToken }
+  }), env, testContext);
+  assert.equal(second.status, 200);
+});
+
+test("JSON request bodies are bounded and malformed JSON is rejected", async () => {
+  const valid = new Request("https://shop.example.test/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ok: true })
+  });
+  assert.equal(await readBoundedRequestText(valid, 64), '{"ok":true}');
+
+  const oversized = new Request("https://shop.example.test/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "x".repeat(128)
+  });
+  await assert.rejects(readBoundedRequestText(oversized, 32), error => error.status === 413);
+
+  const malformed = await worker.fetch(new Request("https://shop.example.test/api/health", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{invalid"
+  }), {}, testContext);
+  assert.equal(malformed.status, 400);
+});
+
+test("multipart upload request bodies are not consumed by the global JSON parser", async () => {
+  const form = new FormData();
+  form.append("file", new Blob(["not-an-image"], { type: "image/png" }), "test.png");
+  const request = new Request("https://shop.example.test/api/admin/upload", {
+    method: "POST",
+    headers: { "X-Admin-Token": "invalid-token" },
+    body: form
+  });
+  const response = await worker.fetch(request, {
+    DB: { prepare() { return { bind() { return this; }, async first() { return null; } }; } }
+  }, testContext);
+  assert.equal(response.status, 401);
+  assert.equal(request.bodyUsed, false);
 });
