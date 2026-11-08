@@ -295,3 +295,41 @@ test("order status transitions allow metadata-only updates but reject invalid ju
   assert.equal(canTransitionOrderStatus("delivered", "cancelled"), false);
   assert.equal(canTransitionOrderStatus("cancelled", "pending"), false);
 });
+
+test("tracking numbers can be updated without an order status transition", async () => {
+  const token = "b".repeat(64);
+  const tokenHash = await hashSessionToken(token);
+  let batchedSql = [];
+  const DB = {
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...args) { values = args; return this; },
+        async first() {
+          if (sql.includes("SELECT * FROM sessions")) return { token: tokenHash, expires_at: Date.now() + 60_000 };
+          if (sql.includes("SELECT id, status FROM orders")) return { id: 7, status: "shipped" };
+          return null;
+        },
+        async all() { return { results: [] }; }
+      };
+    },
+    async batch(statements) {
+      batchedSql = statements.map(statement => statement.sql || "");
+      return statements.map(() => ({ meta: { changes: 1 } }));
+    }
+  };
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/orders/GS-TEST", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ status: "shipped", tracking_no: "1234567890" })
+  }), { DB }, testContext);
+  assert.equal(response.status, 200);
+  assert.equal(batchedSql.length, 1);
+  assert.match(batchedSql[0], /^UPDATE orders SET status/);
+});
+
+test("admin order CSV reads only items belonging to the exported latest orders", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
+  assert.match(source, /FROM order_items oi INNER JOIN orders o ON o\.id = oi\.order_id WHERE o\.id IN \(SELECT id FROM orders ORDER BY id DESC LIMIT 5000\)/);
+});
