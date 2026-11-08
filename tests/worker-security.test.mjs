@@ -304,6 +304,7 @@ test("tracking numbers can be updated without an order status transition", async
     prepare(sql) {
       let values = [];
       return {
+        sql,
         bind(...args) { values = args; return this; },
         async first() {
           if (sql.includes("SELECT * FROM sessions")) return { token: tokenHash, expires_at: Date.now() + 60_000 };
