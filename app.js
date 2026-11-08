@@ -162,24 +162,6 @@ const isPostal = (p) => /^\d{10}$/.test(String(p).replace(/\D/g, ''));
     .citem__later-btn{font-size:11px;color:var(--dim);padding:5px 10px;border-radius:100px;transition:all .25s var(--ease)}
     .citem__later-btn:hover{background:var(--glass-bg-hi);color:var(--purple)}
     .citem__note-show{font-size:11px;color:var(--gold);margin-top:4px;padding:5px 10px;background:color-mix(in srgb,var(--gold) 10%,transparent);border-radius:8px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .pcard__viewers{position:absolute;bottom:14px;left:14px;padding:6px 12px;border-radius:100px;background:rgba(255,75,62,.9);backdrop-filter:blur(12px);color:#fff;font-size:10px;font-weight:700;z-index:3;display:flex;align-items:center;gap:5px;animation:pulseViewers 2.5s ease-in-out infinite}
-    .pcard__viewers::before{content:'';width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
-    @keyframes pulseViewers{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .trust-badges{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:36px 0 0}
-    @media(max-width:700px){.trust-badges{grid-template-columns:repeat(2,1fr);gap:12px}}
-    .trust-badge{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--glass-bg);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-md);transition:all .4s var(--spring)}
-    .trust-badge:hover{border-color:var(--lime);transform:translateY(-4px);box-shadow:0 20px 40px -15px rgba(0,0,0,.5),0 0 30px -10px var(--glow-lime)}
-    .trust-badge__icon{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--lime) 15%,transparent),color-mix(in srgb,var(--green) 10%,transparent));display:grid;place-items:center;font-size:20px;flex-shrink:0}
-    .trust-badge__text b{display:block;font-size:12.5px;color:var(--text);font-weight:600;margin-bottom:3px}
-    .trust-badge__text span{font-size:10.5px;color:var(--dim)}
-    .purchase-popup{position:fixed;bottom:90px;right:24px;z-index:140;background:var(--glass-bg-hi);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-lg);padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-lg);max-width:calc(100vw - 40px);transform:translateX(120%);transition:transform .55s var(--spring);font-size:12.5px}
-    .purchase-popup.on{transform:translateX(0)}
-    .purchase-popup img{width:44px;height:55px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--glass-line)}
-    .purchase-popup__text{flex:1;min-width:0}
-    .purchase-popup__text b{color:var(--lime);font-weight:700;text-shadow:0 0 12px var(--glow-lime)}
-    .purchase-popup__text small{display:block;color:var(--dim);font-size:10.5px;margin-top:3px}
-    @media(max-width:700px){.purchase-popup{bottom:130px;right:16px;left:16px;max-width:none}}
     .gallery__nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:3;transition:all .3s var(--spring);opacity:0}
     .gallery__main:hover .gallery__nav{opacity:1}
     .gallery__nav:hover{background:var(--lime);color:var(--ink);border-color:var(--lime);transform:translateY(-50%) scale(1.12)}
@@ -566,7 +548,6 @@ async function loadProducts() {
     renderGrid();
     renderRecent();
     renderFloatCart();
-    startSocialProof();
   } catch (e) {
     grid.innerHTML = `<div class="empty-state"><p style="margin-bottom:16px">خطا در بارگذاری محصولات.</p><button class="chip" onclick="loadProducts()">🔄 تلاش دوباره</button></div>`;
   }
@@ -621,6 +602,12 @@ function productCardHTML(p, idx = 0) {
   const hasDiscount = p.compare_price && p.compare_price > p.price;
   const discountPct = hasDiscount ? Math.round((1 - p.price / p.compare_price) * 100) : 0;
   const bestSeller = isBestSeller(p);
+  const ratingCount = Math.max(0, Number(p.rating_count) || 0);
+  const ratingValue = Math.max(0, Math.min(5, Number(p.rating_avg) || 0));
+  const categoryLabel = CATEGORY_LABELS[p.category] || p.category || '';
+  const ratingHTML = ratingCount > 0
+    ? `<div class="pcard__rating" aria-label="امتیاز ${ratingValue.toFixed(1)} از ۵ بر اساس ${nf(ratingCount)} نظر"><span aria-hidden="true">★</span><b>${ratingValue.toFixed(1)}</b><small>(${nf(ratingCount)})</small></div>`
+    : '';
 
   const dots = colors.slice(0, 4).map(c => {
     const avail = colorStock(p, c) > 0;
@@ -637,7 +624,6 @@ function productCardHTML(p, idx = 0) {
   if (stock === 0)     badges += `<span class="pbadge pbadge--danger">ناموجود</span>`;
   else if (stock <= 3) badges += `<span class="pbadge pbadge--warn">آخرین موجودی</span>`;
 
-  const viewers = (idx % 3 === 0 && stock > 0 && p.id) ? 3 + ((p.id * 7) % 5) : 0;
 
   return `
     <article class="pcard reveal" data-pid="${p.id}" role="button" tabindex="0" aria-label="${esc(p.name)}" style="transition-delay:${Math.min(idx * 40, 200)}ms">
@@ -652,11 +638,12 @@ function productCardHTML(p, idx = 0) {
         <button class="pcard__compare ${isCompared ? 'on' : ''}" data-compare="${p.id}" title="افزودن به مقایسه" aria-label="افزودن به مقایسه" aria-pressed="${isCompared}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
         </button>
-        ${viewers > 0 ? `<div class="pcard__viewers" aria-hidden="true">${nf(viewers)} نفر الان می‌بینند</div>` : ''}
         <div class="pcard__quick" aria-hidden="true">مشاهده و خرید</div>
       </div>
       <div class="pcard__info">
+        ${categoryLabel ? `<div class="pcard__category">${esc(categoryLabel)}</div>` : ''}
         <div class="pcard__name">${esc(p.name)}</div>
+        ${ratingHTML}
         <div class="pcard__meta">
           <span class="pcard__price">
             ${hasDiscount ? `<del>${fmtNum(p.compare_price)}</del>` : ''}${fmt(p.price)}
@@ -716,63 +703,6 @@ function renderRecent() {
   if (!grid) return;
   grid.innerHTML = recentProducts.map((p, i) => productCardHTML(p, i)).join('');
   observeReveals();
-}
-
-/* ---------- Trust Badges ---------- */
-function injectTrustBadges() {
-  const stats = $('.hero__stats');
-  if (!stats || $('.trust-badges')) return;
-  const badges = document.createElement('div');
-  badges.className = 'trust-badges';
-  badges.innerHTML = `
-    <div class="trust-badge"><div class="trust-badge__icon">🛡️</div><div class="trust-badge__text"><b>ضمانت اصالت</b><span>۱۰۰٪ اصل و باکیفیت</span></div></div>
-    <div class="trust-badge"><div class="trust-badge__icon">🚚</div><div class="trust-badge__text"><b>ارسال سریع</b><span>۲ تا ۴ روز کاری</span></div></div>
-    <div class="trust-badge"><div class="trust-badge__icon">💳</div><div class="trust-badge__text"><b>پرداخت امن</b><span>در محل یا کارت</span></div></div>
-    <div class="trust-badge"><div class="trust-badge__icon">🔄</div><div class="trust-badge__text"><b>مرجوعی آسان</b><span>تا ۳ روز</span></div></div>
-  `;
-  stats.parentElement?.insertBefore(badges, stats.nextSibling);
-}
-
-/* ---------- Social Proof ---------- */
-const FAKE_NAMES = ['علی','رضا','مهدی','سارا','مریم','حسین','امیر','نگار','پویا','مهسا'];
-const FAKE_CITIES = ['تهران','اصفهان','مشهد','شیراز','تبریز','کرج','قم','اهواز','رشت'];
-let socialProofTimers = [];
-
-function startSocialProof() {
-  if (!state.products.length) return;
-  socialProofTimers.forEach(t => clearTimeout(t));
-  socialProofTimers = [];
-
-  const lastSeen = Number(safeGet(K.POPUP_SEEN, 0)) || 0;
-  if (Date.now() - lastSeen < 600000) return;
-
-  const show = () => {
-    if (document.hidden || document.body.classList.contains('no-scroll')) return;
-    const p = state.products[Math.floor(Math.random() * state.products.length)];
-    if (!p) return;
-    const name = FAKE_NAMES[Math.floor(Math.random() * FAKE_NAMES.length)];
-    const city = FAKE_CITIES[Math.floor(Math.random() * FAKE_CITIES.length)];
-
-    let popup = $('#purchasePopup');
-    if (!popup) {
-      popup = document.createElement('div');
-      popup.id = 'purchasePopup';
-      popup.className = 'purchase-popup';
-      popup.setAttribute('role', 'status');
-      document.body.appendChild(popup);
-      popup.onclick = () => popup.classList.remove('on');
-    }
-    popup.innerHTML = `
-      <img src="${esc(p.image)}" alt="">
-      <div class="purchase-popup__text">
-        <div><b>${esc(name)}</b> از ${esc(city)}</div>
-        <small>همین الان ${esc(String(p.name).slice(0, 22))} خرید</small>
-      </div>`;
-    popup.classList.add('on');
-    safeStore(K.POPUP_SEEN, Date.now());
-    setTimeout(() => popup.classList.remove('on'), 5500);
-  };
-  socialProofTimers.push(setTimeout(show, 12000));
 }
 
 /* ---------- Search Suggest ---------- */
@@ -1191,21 +1121,23 @@ async function openProduct(id) {
       <div style="padding:0;overflow:hidden;border-radius:var(--r-xl)">
         <div class="gallery">
           <div class="gallery__main" id="galleryMain">
-            <img id="galleryMainImg" src="${esc(gallery[0] || '')}" alt="${esc(p.name)}">
+            <img id="galleryMainImg" src="${esc(gallery[0] || '')}" alt="${esc(p.name)}" loading="eager" decoding="async">
             <div class="gallery__zoom-hint">🔍 برای بزرگ‌نمایی کلیک کن</div>
             ${hasMultiple ? `
               <button type="button" class="gallery__nav gallery__nav--prev" id="galPrev" aria-label="قبلی"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
               <button type="button" class="gallery__nav gallery__nav--next" id="galNext" aria-label="بعدی"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
               <div class="gallery__counter" id="galCounter">۱ / ${nf(gallery.length)}</div>
               <div class="gallery__thumbs">
-                ${gallery.map((g, i) => `<button type="button" class="gallery__thumb ${i === 0 ? 'on' : ''}" data-idx="${i}" aria-pressed="${i === 0}" aria-label="نمایش تصویر ${nf(i+1)}"><img src="${esc(g)}" alt=""></button>`).join('')}
+                ${gallery.map((g, i) => `<button type="button" class="gallery__thumb ${i === 0 ? 'on' : ''}" data-idx="${i}" aria-pressed="${i === 0}" aria-label="نمایش تصویر ${nf(i+1)}"><img src="${esc(g)}" alt="" loading="lazy" decoding="async"></button>`).join('')}
               </div>
             ` : ''}
           </div>
           <div class="detail">
             ${p.tag ? `<span class="tag" style="align-self:flex-start;margin-bottom:14px">${esc(p.tag)}</span>` : ''}
+            ${CATEGORY_LABELS[p.category] || p.category ? `<div class="detail__category">${esc(CATEGORY_LABELS[p.category] || p.category)}</div>` : ''}
             <h2>${esc(p.name)}</h2>
-            <div class="detail__price">${hasDiscount ? `<del style="color:var(--faint);font-weight:400;font-size:14px;margin-left:8px">${fmtNum(p.compare_price)}</del>` : ''}${fmt(p.price)}</div>
+            ${Number(p.rating_count) > 0 ? `<div class="detail__rating" aria-label="امتیاز ${Number(p.rating_avg || 0).toFixed(1)} از ۵ بر اساس ${nf(Number(p.rating_count))} نظر"><span aria-hidden="true">★</span> ${Number(p.rating_avg || 0).toFixed(1)} <small>· ${nf(Number(p.rating_count))} نظر ثبت‌شده</small></div>` : ''}
+            <div class="detail__price">${hasDiscount ? `<del style="color:var(--faint);font-weight:400;font-size:14px;margin-left:8px">${fmtNum(p.compare_price)}</del>` : ''}${fmt(p.price)}${hasDiscount ? `<span class="detail__discount">٪${nf(Math.round((1 - p.price / p.compare_price) * 100))} تخفیف</span>` : ''}</div>
             <p class="detail__desc">${esc(p.description || '')}</p>
 
             <div class="detail__row">رنگ</div>
@@ -1237,7 +1169,7 @@ async function openProduct(id) {
 
             ${stockOfSize === 0
               ? `<button type="button" class="chip" id="notifyMe" style="margin-top:12px;width:100%">🔔 بهم خبر بده وقتی موجود شد</button>`
-              : `<div style="display:flex;align-items:center;gap:12px;margin-top:18px">
+              : `<div class="product-purchase-bar" style="display:flex;align-items:center;gap:12px;margin-top:18px">
                   <div class="qty-ctrl" style="padding:4px">
                     <button type="button" id="pMinus" aria-label="کاهش">−</button>
                     <span>${fmtNum(qty)}</span>
@@ -2364,7 +2296,6 @@ function bindGlobal() {
     initScrollUI();
     initFAQ();
     initSearchSuggest();
-    injectTrustBadges();
     // Independent storefront requests run together to reduce the critical startup waterfall.
     await Promise.all([loadContent(), loadSettings(), loadProducts()]);
     initCountdown();   // settings are ready before the countdown starts
