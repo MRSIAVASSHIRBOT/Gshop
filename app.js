@@ -1721,6 +1721,14 @@ function openCheckout({ subtotal, discount, coupon }) {
     <div class="field"><label>یادداشت (اختیاری)</label><input type="text" id="ckNote" placeholder="مثلاً بسته‌بندی کادویی"></div>
     <label class="save-info-toggle"><input type="checkbox" id="ckSave" ${saved.name ? 'checked' : ''}><span>ذخیره اطلاعات برای خریدهای بعدی</span></label>
     <input type="text" id="ckWebsite" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <section class="checkout-order-summary" aria-labelledby="checkoutOrderSummaryTitle">
+      <div class="checkout-order-summary__head"><b id="checkoutOrderSummaryTitle">مرور سفارش</b><span>${fmtNum(state.cart.reduce((sum, item) => sum + item.qty, 0))} عدد کالا</span></div>
+      <ul class="checkout-order-summary__items">
+        ${state.cart.map(item => '<li><span class="checkout-order-summary__name">' + esc(item.name) + '<small>' + esc(item.color) + ' · ' + esc(item.size) + '</small></span><b>× ' + fmtNum(item.qty) + '</b></li>').join('')}
+      </ul>
+      <p class="checkout-order-summary__hint">موجودی و قیمت نهایی هر تنوع هنگام ثبت سفارش در سرور دوباره بررسی می‌شود.</p>
+    </section>
+    <div class="checkout-shipping-note" role="note">🚚 هزینهٔ ارسال بر اساس استان مقصد محاسبه می‌شود و مبلغ نهایی در همین صفحه به‌روزرسانی خواهد شد.</div>
     <div class="ctotals" style="margin-top:20px">
       <div class="ctotals__row"><span>جمع کالاها</span><span>${fmt(subtotal)}</span></div>
       ${discount > 0 ? `<div class="ctotals__row green"><span>تخفیف ${esc(coupon?.code || '')}</span><span>− ${fmt(discount)}</span></div>` : ''}
@@ -1748,6 +1756,20 @@ function openCheckout({ subtotal, discount, coupon }) {
   }
 
   $('#ckProvince').onchange = updateShippingOnly;
+  const checkoutFields = ['#ckName','#ckPhone','#ckEmail','#ckProvince','#ckCity','#ckPostal','#ckAddress'];
+  checkoutFields.forEach(selector => {
+    const field = $(selector);
+    field?.addEventListener('input', () => {
+      if (field.hasAttribute('aria-invalid')) field.removeAttribute('aria-invalid');
+      const err = $('#ckErr');
+      if (err?.classList.contains('on')) err.classList.remove('on');
+    });
+    field?.addEventListener('change', () => {
+      if (field.hasAttribute('aria-invalid')) field.removeAttribute('aria-invalid');
+      const err = $('#ckErr');
+      if (err?.classList.contains('on')) err.classList.remove('on');
+    });
+  });
 
   if ($('#useSaved')) {
     $('#useSaved').onclick = () => {
