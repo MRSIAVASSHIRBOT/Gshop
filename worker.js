@@ -624,7 +624,7 @@ export default {
       }
 
       if (path === "/api/health" && method === "GET") return jsonResponse({ ok: true, version: "18.1" }, 200, env, request);
-      if (path === "/api/settings" && method === "GET") return jsonResponse({ settings: await getSettings(env) }, 200, env, request, { "Cache-Control": "public, max-age=60" });
+      if (path === "/api/settings" && method === "GET") return jsonResponse({ settings: await getSettings(env) }, 200, env, request, { "Cache-Control": "public, max-age=15" });
 
       if (path === "/api/content" && method === "GET") {
         try {
@@ -1042,16 +1042,16 @@ export default {
           if (wh.length) qy += ` WHERE ` + wh.join(" AND ");
           qy += ` ORDER BY id DESC LIMIT 200`;
           const { results: os } = await env.DB.prepare(qy).bind(...bd).all(), orderIds = os.map(o => o.id), orderNos = os.map(o => o.order_no);
-          const its = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")})`).bind(...orderIds).all()).results : [], nts = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_notes WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id DESC`).bind(...orderIds).all()).results : [], pys = orderNos.length ? (await env.DB.prepare(`SELECT * FROM payments WHERE order_no IN (${orderNos.map(() => "?").join(",")})`).bind(...orderNos).all()).results : [];
+          const its = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")})`).bind(...orderIds).all()).results : [], nts = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_notes WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id DESC`).bind(...orderIds).all()).results : [], pys = orderNos.length ? (await env.DB.prepare(`SELECT * FROM payments WHERE order_no IN (${orderNos.map(() => "?").join(",")}) ORDER BY created_at DESC`).bind(...orderNos).all()).results : [];
           const im = {}, nm = {}, pm = {};
           for (const i of its) (im[i.order_id] ||= []).push(i);
           for (const n of nts) (nm[n.order_id] ||= []).push(n);
-          for (const x of pys) pm[x.order_no] = x;
+          for (const x of pys) if (!pm[x.order_no]) pm[x.order_no] = x;
           return jsonResponse({ orders: os.map(o => ({ ...o, items: im[o.id] || [], notes: nm[o.id] || [], payment: pm[o.order_no] || null })) }, 200, env, request);
         }
 
         if (path === "/api/admin/orders.csv" && method === "GET") {
-          const { results: os } = await env.DB.prepare("SELECT * FROM orders ORDER BY id DESC LIMIT 5000").all(), es = s => { let str = String(s ?? ""); if (/^[=+\-@\t\r]/.test(str)) str = "'" + str; return `"${str.replace(/"/g, '""')}"`; }, ln = ["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"], { results: allItems } = await env.DB.prepare("SELECT order_id, name, color, size, qty FROM order_items").all(), im = {};
+          const { results: os } = await env.DB.prepare("SELECT * FROM orders ORDER BY id DESC LIMIT 5000").all(), es = s => { let str = String(s ?? ""); if (/^[=+\-@\t\r]/.test(str)) str = "'" + str; return `"${str.replace(/"/g, '""')}"`; }, ln = ["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"], { results: allItems } = await env.DB.prepare("SELECT oi.order_id, oi.name, oi.color, oi.size, oi.qty FROM order_items oi INNER JOIN orders o ON o.id = oi.order_id WHERE o.id IN (SELECT id FROM orders ORDER BY id DESC LIMIT 5000)").all(), im = {};
           for (const i of allItems) (im[i.order_id] ||= []).push(i);
           for (const o of os) { const its = im[o.id] || [], it = its.map(i => `${i.name}/${i.color}/${i.size} x${i.qty}`).join(" | "); ln.push([es(o.order_no), es(o.name), es(o.phone), es(o.city || ""), es(o.address || ""), es(o.status), o.subtotal, o.discount, o.shipping || 0, o.total, es(o.created_at), es(it)].join(",")); }
           return new Response("\uFEFF" + ln.join("\n"), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="orders-${Date.now()}.csv"`, ...securityHeaders, ...getCorsHeaders(request, env) } });
