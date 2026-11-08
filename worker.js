@@ -195,6 +195,15 @@ function generateRandomHex(length = 32) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+export async function hashSessionToken(token) {
+  if (typeof token !== "string" || !token || token.length > 512) {
+    throw new TypeError("Session token must be a non-empty bounded string");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
+}
+
 /** Create a customer-facing reference with 64 bits of cryptographic randomness. */
 export function generateOrderNumber(timestamp = Date.now()) {
   return `GS-${String(timestamp).slice(-8)}${generateRandomHex(8).toUpperCase()}`;
@@ -274,12 +283,29 @@ async function getSettings(env) {
 }
 
 async function verifyAdminSession(request, env) {
-  const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-  if (!token) throw new Error("Unauthorized");
+  const authorization = request.headers.get("Authorization") || "";
+  const token = request.headers.get("X-Admin-Token") || authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token || token.length > 512) throw new Error("Unauthorized");
 
-  const session = await env.DB.prepare(
+  const findSession = candidate => env.DB.prepare(
     "SELECT * FROM sessions WHERE token = ? AND expires_at > ?"
-  ).bind(token, Date.now()).first();
+  ).bind(candidate, Date.now()).first();
+
+  const tokenHash = await hashSessionToken(token);
+  let session = await findSession(tokenHash);
+  if (!session) {
+    // Upgrade legacy plaintext sessions on first successful use without logging out active admins.
+    const legacySession = await findSession(token);
+    if (legacySession) {
+      try {
+        await env.DB.prepare("UPDATE sessions SET token = ? WHERE token = ?")
+          .bind(tokenHash, token).run();
+      } catch {
+        // Keep the legacy session usable until expiry if a concurrent migration fails.
+      }
+      session = await findSession(tokenHash) || legacySession || null;
+    }
+  }
 
   if (!session) throw new Error("Unauthorized");
   return session;
@@ -301,6 +327,50 @@ async function logAudit(env, action, target, payload, request, ctx) {
 // 5. Digipay Integration (With Token Caching)
 // ==========================================
 let digipayTokenCache = { token: null, expiresAt: 0 };
+
+export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new TypeError("Request byte limit must be a positive safe integer");
+  }
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await request.body?.cancel();
+    const error = new Error("Request body is too large");
+    error.status = 413;
+    throw error;
+  }
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        const error = new Error("Request body is too large");
+        error.status = 413;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("Request body is not valid UTF-8");
+  }
+}
 
 export async function readBoundedText(response, maxBytes = 64 * 1024) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
@@ -465,15 +535,26 @@ export default {
 
     let body = {};
     if (method === "POST" || method === "PATCH") {
-      try {
-        body = await request.json();
-      } catch {
+      const contentType = request.headers.get("Content-Type") || "";
+      if (/^application\/json(?:;|$)/i.test(contentType)) {
         try {
-          body = Object.fromEntries(await request.formData());
-        } catch {
-          body = {};
+          const rawBody = await readBoundedRequestText(request, 1024 * 1024);
+          body = rawBody ? JSON.parse(rawBody) : {};
+          if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("بدنه درخواست نامعتبر است");
+        } catch (error) {
+          const tooLarge = error?.status === 413;
+          return jsonResponse({ error: tooLarge ? "حجم درخواست بیش از حد مجاز است" : "بدنه JSON نامعتبر است" }, tooLarge ? 413 : 400, env, request);
+        }
+      } else if (/^application\/x-www-form-urlencoded(?:;|$)/i.test(contentType)) {
+        try {
+          const rawBody = await readBoundedRequestText(request, 64 * 1024);
+          body = Object.fromEntries(new URLSearchParams(rawBody));
+        } catch (error) {
+          const tooLarge = error?.status === 413;
+          return jsonResponse({ error: tooLarge ? "حجم درخواست بیش از حد مجاز است" : "بدنه فرم نامعتبر است" }, tooLarge ? 413 : 400, env, request);
         }
       }
+      // Leave multipart bodies untouched: the authenticated upload route consumes them once.
     }
 
     try {
@@ -784,14 +865,19 @@ export default {
         const userOk = safeCompare(username, expectedUser), passOk = safeCompare(password, expectedPass);
         if (!userOk || !passOk) { ctx.waitUntil(logAudit(env, "login_failed", username, { ip: clientIp }, request, ctx)); return jsonResponse({ error: "نام کاربری یا رمز عبور اشتباه است" }, 401, env, request); }
         const token = generateRandomHex(32), expiresAt = Date.now() + (parseInt(env.SESSION_HOURS || "12") * 3600000);
-        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(token, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
+        const tokenHash = await hashSessionToken(token);
+        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(tokenHash, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
         ctx.waitUntil(logAudit(env, "login_success", username, {}, request, ctx));
         return jsonResponse({ token, expiresAt }, 200, env, request);
       }
 
       if (path === "/api/admin/logout" && method === "POST") {
-        const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (token) await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+        const authorization = request.headers.get("Authorization") || "";
+        const token = request.headers.get("X-Admin-Token") || authorization.replace(/^Bearer\s+/i, "").trim();
+        if (token && token.length <= 512) {
+          const tokenHash = await hashSessionToken(token);
+          await env.DB.prepare("DELETE FROM sessions WHERE token = ? OR token = ?").bind(tokenHash, token).run();
+        }
         return jsonResponse({ ok: true }, 200, env, request);
       }
 
@@ -802,6 +888,8 @@ export default {
 
         if (path === "/api/admin/upload" && method === "POST") {
           if (!checkRateLimit(`upload:${clientIp}`, 30, 3600000)) return jsonResponse({ error: "محدودیت آپلود" }, 429, env, request);
+          const declaredLength = Number(request.headers.get("Content-Length"));
+          if (Number.isFinite(declaredLength) && declaredLength > 5 * 1024 * 1024 + 64 * 1024) return jsonResponse({ error: "حجم درخواست آپلود بیش از حد مجاز است" }, 413, env, request);
           const formData = await request.formData(), file = formData.get("file");
           if (!file || typeof file === "string" || file.size > 5242880 || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) return jsonResponse({ error: "فایل نامعتبر یا بیش از ۵ مگابایت" }, 400, env, request);
           const tgFormData = new FormData();
