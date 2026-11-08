@@ -221,6 +221,8 @@ const isPostal = (p) => /^\d{10}$/.test(String(p).replace(/\D/g, ''));
 async function api(path, opts = {}, retries = 1) {
   const token = safeGet(K.ADMIN_TOKEN);
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const method = String(opts.method || 'GET').toUpperCase();
+  const retryable = method === 'GET' || method === 'HEAD';
   if (token && String(path).startsWith('/api/admin/')) headers['X-Admin-Token'] = token;
 
   try {
@@ -233,7 +235,8 @@ async function api(path, opts = {}, retries = 1) {
     }
     return data;
   } catch (e) {
-    if (retries > 0 && !e.status && navigator.onLine) {
+    // Never replay a write after an ambiguous network failure: it may already have committed.
+    if (retryable && retries > 0 && !e.status && navigator.onLine) {
       await new Promise(res => setTimeout(res, 600));
       return api(path, opts, retries - 1);
     }

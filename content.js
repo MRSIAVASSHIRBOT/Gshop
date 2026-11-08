@@ -58,7 +58,7 @@ function applyContent() {
   setImg('storyImg', c.story_img);
 
   // Instagram
-  for (let i = 1; i <= 6; i++) setImg('instagram' === 'instagram' ? `igImg${i}` : '', c[`instagram_${i}`]);
+  for (let i = 1; i <= 6; i++) setImg(`igImg${i}`, c[`instagram_${i}`]);
 }
 
 window.loadContent = loadContent;

@@ -28,6 +28,10 @@ const ORDER_TRANSITIONS = {
   cancelled: []
 };
 
+export function canTransitionOrderStatus(current, next) {
+  return current === next || Boolean(ORDER_TRANSITIONS[current]?.includes(next));
+}
+
 const PROVINCES = [
   "آذربایجان شرقی","آذربایجان غربی","اردبیل","اصفهان","البرز","ایلام","بوشهر",
   "تهران","چهارمحال و بختیاری","خراسان جنوبی","خراسان رضوی","خراسان شمالی",
@@ -102,6 +106,16 @@ function jsonResponse(data, status = 200, env = {}, request = null, extraHeaders
 function sanitize(str, maxLength = 500) {
   if (!str) return "";
   return String(str).trim().slice(0, maxLength).replace(/[\u0000-\u001F\u007F]/g, "");
+}
+
+export function parseJsonObject(value) {
+  if (typeof value !== "string" || !value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function escapeHtml(str) {
@@ -195,6 +209,15 @@ function generateRandomHex(length = 32) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+export async function hashSessionToken(token) {
+  if (typeof token !== "string" || !token || token.length > 512) {
+    throw new TypeError("Session token must be a non-empty bounded string");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
+}
+
 /** Create a customer-facing reference with 64 bits of cryptographic randomness. */
 export function generateOrderNumber(timestamp = Date.now()) {
   return `GS-${String(timestamp).slice(-8)}${generateRandomHex(8).toUpperCase()}`;
@@ -260,26 +283,50 @@ function generateTelegramOrderMessage(order, items) {
 // ==========================================
 // 4. Database & Auth Helpers
 // ==========================================
+let settingsCache = { value: null, expiresAt: 0 };
+
 async function getSettings(env) {
+  const now = Date.now();
+  if (settingsCache.value && settingsCache.expiresAt > now) return { ...settingsCache.value };
   try {
     const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
     const settings = { ...DEFAULT_SETTINGS };
     for (const row of results) {
-      settings[row.key] = row.value;
+      if (typeof row.key === "string") {
+        settings[row.key] = String(row.value ?? "");
+      }
     }
-    return settings;
+    settingsCache = { value: settings, expiresAt: now + 15_000 };
+    return { ...settings };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
 async function verifyAdminSession(request, env) {
-  const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-  if (!token) throw new Error("Unauthorized");
+  const authorization = request.headers.get("Authorization") || "";
+  const token = request.headers.get("X-Admin-Token") || authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token || token.length > 512) throw new Error("Unauthorized");
 
-  const session = await env.DB.prepare(
+  const findSession = candidate => env.DB.prepare(
     "SELECT * FROM sessions WHERE token = ? AND expires_at > ?"
-  ).bind(token, Date.now()).first();
+  ).bind(candidate, Date.now()).first();
+
+  const tokenHash = await hashSessionToken(token);
+  let session = await findSession(tokenHash);
+  if (!session) {
+    // Upgrade legacy plaintext sessions on first successful use without logging out active admins.
+    const legacySession = await findSession(token);
+    if (legacySession) {
+      try {
+        await env.DB.prepare("UPDATE sessions SET token = ? WHERE token = ?")
+          .bind(tokenHash, token).run();
+      } catch {
+        // Keep the legacy session usable until expiry if a concurrent migration fails.
+      }
+      session = await findSession(tokenHash) || legacySession || null;
+    }
+  }
 
   if (!session) throw new Error("Unauthorized");
   return session;
@@ -301,6 +348,50 @@ async function logAudit(env, action, target, payload, request, ctx) {
 // 5. Digipay Integration (With Token Caching)
 // ==========================================
 let digipayTokenCache = { token: null, expiresAt: 0 };
+
+export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new TypeError("Request byte limit must be a positive safe integer");
+  }
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await request.body?.cancel();
+    const error = new Error("Request body is too large");
+    error.status = 413;
+    throw error;
+  }
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        const error = new Error("Request body is too large");
+        error.status = 413;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("Request body is not valid UTF-8");
+  }
+}
 
 export async function readBoundedText(response, maxBytes = 64 * 1024) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
@@ -465,15 +556,26 @@ export default {
 
     let body = {};
     if (method === "POST" || method === "PATCH") {
-      try {
-        body = await request.json();
-      } catch {
+      const contentType = request.headers.get("Content-Type") || "";
+      if (/^application\/json(?:;|$)/i.test(contentType)) {
         try {
-          body = Object.fromEntries(await request.formData());
-        } catch {
-          body = {};
+          const rawBody = await readBoundedRequestText(request, 1024 * 1024);
+          body = rawBody ? JSON.parse(rawBody) : {};
+          if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("بدنه درخواست نامعتبر است");
+        } catch (error) {
+          const tooLarge = error?.status === 413;
+          return jsonResponse({ error: tooLarge ? "حجم درخواست بیش از حد مجاز است" : "بدنه JSON نامعتبر است" }, tooLarge ? 413 : 400, env, request);
+        }
+      } else if (/^application\/x-www-form-urlencoded(?:;|$)/i.test(contentType)) {
+        try {
+          const rawBody = await readBoundedRequestText(request, 64 * 1024);
+          body = Object.fromEntries(new URLSearchParams(rawBody));
+        } catch (error) {
+          const tooLarge = error?.status === 413;
+          return jsonResponse({ error: tooLarge ? "حجم درخواست بیش از حد مجاز است" : "بدنه فرم نامعتبر است" }, tooLarge ? 413 : 400, env, request);
         }
       }
+      // Leave multipart bodies untouched: the authenticated upload route consumes them once.
     }
 
     try {
@@ -522,7 +624,7 @@ export default {
       }
 
       if (path === "/api/health" && method === "GET") return jsonResponse({ ok: true, version: "18.1" }, 200, env, request);
-      if (path === "/api/settings" && method === "GET") return jsonResponse({ settings: await getSettings(env) }, 200, env, request, { "Cache-Control": "public, max-age=60" });
+      if (path === "/api/settings" && method === "GET") return jsonResponse({ settings: await getSettings(env) }, 200, env, request, { "Cache-Control": "public, max-age=15" });
 
       if (path === "/api/content" && method === "GET") {
         try {
@@ -536,12 +638,14 @@ export default {
       if (path === "/api/products" && method === "GET") {
         if (!checkRateLimit(`products:${clientIp}`, 120, 60000)) return jsonResponse({ error: "تعداد درخواست زیاد است" }, 429, env, request);
         const { results: products } = await env.DB.prepare("SELECT id, name, slug, price, compare_price, image, description, details, tag, category, sort_order, rating_avg, rating_count, active, created_at FROM products WHERE active = 1 ORDER BY sort_order ASC, id DESC").all();
-        const { results: variants } = await env.DB.prepare("SELECT product_id, color, size, stock, extra_price FROM variants").all();
-        const { results: images } = await env.DB.prepare("SELECT id, product_id, url, sort_order FROM product_images ORDER BY sort_order ASC").all();
+        const [variantResult, imageResult] = await Promise.all([
+          env.DB.prepare("SELECT v.product_id, v.color, v.size, v.stock, v.extra_price FROM variants v INNER JOIN products p ON p.id = v.product_id WHERE p.active = 1").all(),
+          env.DB.prepare("SELECT i.id, i.product_id, i.url, i.sort_order FROM product_images i INNER JOIN products p ON p.id = i.product_id WHERE p.active = 1 ORDER BY i.sort_order ASC").all()
+        ]);
         const variantMap = {}, imageMap = {};
-        for (const v of variants) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
-        for (const img of images) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
-        const formattedProducts = products.map(p => ({ ...p, details: p.details ? JSON.parse(p.details) : {}, variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
+        for (const v of variantResult.results) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
+        for (const img of imageResult.results) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
+        const formattedProducts = products.map(p => ({ ...p, details: parseJsonObject(p.details), variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
         return jsonResponse({ products: formattedProducts }, 200, env, request, { "Cache-Control": "public, max-age=60" });
       }
 
@@ -551,7 +655,7 @@ export default {
         if (!product) return jsonResponse({ error: "محصول یافت نشد" }, 404, env, request);
         const { results: variants } = await env.DB.prepare("SELECT color, size, stock, extra_price FROM variants WHERE product_id = ?").bind(productId).all();
         const { results: gallery } = await env.DB.prepare("SELECT id, url, sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order ASC").bind(productId).all();
-        return jsonResponse({ product: { ...product, details: product.details ? JSON.parse(product.details) : {}, variants, gallery } }, 200, env, request);
+        return jsonResponse({ product: { ...product, details: parseJsonObject(product.details), variants, gallery } }, 200, env, request);
       }
 
       if (/^\/api\/products\/\d+\/reviews$/.test(path) && method === "GET") {
@@ -784,14 +888,19 @@ export default {
         const userOk = safeCompare(username, expectedUser), passOk = safeCompare(password, expectedPass);
         if (!userOk || !passOk) { ctx.waitUntil(logAudit(env, "login_failed", username, { ip: clientIp }, request, ctx)); return jsonResponse({ error: "نام کاربری یا رمز عبور اشتباه است" }, 401, env, request); }
         const token = generateRandomHex(32), expiresAt = Date.now() + (parseInt(env.SESSION_HOURS || "12") * 3600000);
-        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(token, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
+        const tokenHash = await hashSessionToken(token);
+        await env.DB.prepare("INSERT INTO sessions (token, username, ip, user_agent, created_at, expires_at, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(tokenHash, username, clientIp, (request.headers.get("User-Agent") || "").slice(0, 200), Date.now(), expiresAt, Date.now()).run();
         ctx.waitUntil(logAudit(env, "login_success", username, {}, request, ctx));
         return jsonResponse({ token, expiresAt }, 200, env, request);
       }
 
       if (path === "/api/admin/logout" && method === "POST") {
-        const token = request.headers.get("X-Admin-Token") || (request.headers.get("Authorization") || "").replace("Bearer ", "");
-        if (token) await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+        const authorization = request.headers.get("Authorization") || "";
+        const token = request.headers.get("X-Admin-Token") || authorization.replace(/^Bearer\s+/i, "").trim();
+        if (token && token.length <= 512) {
+          const tokenHash = await hashSessionToken(token);
+          await env.DB.prepare("DELETE FROM sessions WHERE token = ? OR token = ?").bind(tokenHash, token).run();
+        }
         return jsonResponse({ ok: true }, 200, env, request);
       }
 
@@ -802,6 +911,8 @@ export default {
 
         if (path === "/api/admin/upload" && method === "POST") {
           if (!checkRateLimit(`upload:${clientIp}`, 30, 3600000)) return jsonResponse({ error: "محدودیت آپلود" }, 429, env, request);
+          const declaredLength = Number(request.headers.get("Content-Length"));
+          if (Number.isFinite(declaredLength) && declaredLength > 5 * 1024 * 1024 + 64 * 1024) return jsonResponse({ error: "حجم درخواست آپلود بیش از حد مجاز است" }, 413, env, request);
           const formData = await request.formData(), file = formData.get("file");
           if (!file || typeof file === "string" || file.size > 5242880 || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) return jsonResponse({ error: "فایل نامعتبر یا بیش از ۵ مگابایت" }, 400, env, request);
           const tgFormData = new FormData();
@@ -818,7 +929,10 @@ export default {
         if (path === "/api/admin/settings" && method === "POST") {
           const allowedKeys = Object.keys(DEFAULT_SETTINGS), statements = [];
           for (const key of allowedKeys) if (body[key] !== undefined) statements.push(env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')").bind(key, String(body[key]).slice(0, 5000)));
-          if (statements.length) await env.DB.batch(statements);
+          if (statements.length) {
+            await env.DB.batch(statements);
+            settingsCache = { value: null, expiresAt: 0 };
+          }
           ctx.waitUntil(logAudit(env, "settings_update", "all", { keys: Object.keys(body) }, request, ctx));
           return jsonResponse({ ok: true }, 200, env, request);
         }
@@ -846,7 +960,7 @@ export default {
           const variantMap = {}, imageMap = {};
           for (const v of variants) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
           for (const img of images) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
-          const result = products.map(p => ({ ...p, details: p.details ? JSON.parse(p.details) : {}, variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
+          const result = products.map(p => ({ ...p, details: parseJsonObject(p.details), variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
           return jsonResponse({ products: result }, 200, env, request);
         }
 
@@ -928,16 +1042,16 @@ export default {
           if (wh.length) qy += ` WHERE ` + wh.join(" AND ");
           qy += ` ORDER BY id DESC LIMIT 200`;
           const { results: os } = await env.DB.prepare(qy).bind(...bd).all(), orderIds = os.map(o => o.id), orderNos = os.map(o => o.order_no);
-          const its = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")})`).bind(...orderIds).all()).results : [], nts = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_notes WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id DESC`).bind(...orderIds).all()).results : [], pys = orderNos.length ? (await env.DB.prepare(`SELECT * FROM payments WHERE order_no IN (${orderNos.map(() => "?").join(",")})`).bind(...orderNos).all()).results : [];
+          const its = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")})`).bind(...orderIds).all()).results : [], nts = orderIds.length ? (await env.DB.prepare(`SELECT * FROM order_notes WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id DESC`).bind(...orderIds).all()).results : [], pys = orderNos.length ? (await env.DB.prepare(`SELECT * FROM payments WHERE order_no IN (${orderNos.map(() => "?").join(",")}) ORDER BY created_at DESC`).bind(...orderNos).all()).results : [];
           const im = {}, nm = {}, pm = {};
           for (const i of its) (im[i.order_id] ||= []).push(i);
           for (const n of nts) (nm[n.order_id] ||= []).push(n);
-          for (const x of pys) pm[x.order_no] = x;
+          for (const x of pys) if (!pm[x.order_no]) pm[x.order_no] = x;
           return jsonResponse({ orders: os.map(o => ({ ...o, items: im[o.id] || [], notes: nm[o.id] || [], payment: pm[o.order_no] || null })) }, 200, env, request);
         }
 
         if (path === "/api/admin/orders.csv" && method === "GET") {
-          const { results: os } = await env.DB.prepare("SELECT * FROM orders ORDER BY id DESC LIMIT 5000").all(), es = s => { let str = String(s ?? ""); if (/^[=+\-@\t\r]/.test(str)) str = "'" + str; return `"${str.replace(/"/g, '""')}"`; }, ln = ["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"], { results: allItems } = await env.DB.prepare("SELECT order_id, name, color, size, qty FROM order_items").all(), im = {};
+          const { results: os } = await env.DB.prepare("SELECT * FROM orders ORDER BY id DESC LIMIT 5000").all(), es = s => { let str = String(s ?? ""); if (/^[=+\-@\t\r]/.test(str)) str = "'" + str; return `"${str.replace(/"/g, '""')}"`; }, ln = ["Order No,Name,Phone,City,Address,Status,Subtotal,Discount,Shipping,Total,Created At,Items"], { results: allItems } = await env.DB.prepare("SELECT oi.order_id, oi.name, oi.color, oi.size, oi.qty FROM order_items oi INNER JOIN orders o ON o.id = oi.order_id WHERE o.id IN (SELECT id FROM orders ORDER BY id DESC LIMIT 5000)").all(), im = {};
           for (const i of allItems) (im[i.order_id] ||= []).push(i);
           for (const o of os) { const its = im[o.id] || [], it = its.map(i => `${i.name}/${i.color}/${i.size} x${i.qty}`).join(" | "); ln.push([es(o.order_no), es(o.name), es(o.phone), es(o.city || ""), es(o.address || ""), es(o.status), o.subtotal, o.discount, o.shipping || 0, o.total, es(o.created_at), es(it)].join(",")); }
           return new Response("\uFEFF" + ln.join("\n"), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="orders-${Date.now()}.csv"`, ...securityHeaders, ...getCorsHeaders(request, env) } });
@@ -952,13 +1066,39 @@ export default {
 
         if (/^\/api\/admin\/orders\/[^/]+$/.test(path) && method === "PATCH") {
           const on = decodeURIComponent(path.split("/").pop()), { status, tracking_no } = body;
-          if (!ORDER_STATUSES.includes(status)) return jsonResponse({ error: "نامعتبر" }, 400, env, request);
           const old = await env.DB.prepare("SELECT id, status FROM orders WHERE order_no = ?").bind(on).first();
           if (!old) return jsonResponse({ error: "یافت نشد" }, 404, env, request);
-          if (!ORDER_TRANSITIONS[old.status]?.includes(status)) return jsonResponse({ error: `تغییر ${old.status} به ${status} مجاز نیست` }, 400, env, request);
-          if (status === "confirmed" && old.status === "pending") { const upd = await env.DB.prepare("UPDATE orders SET status='confirmed' WHERE order_no=? AND status='pending'").bind(on).run(); if (upd.meta.changes > 0) await applyStockChange(env, old.id, "decrement"); }
-          if (status === "cancelled" && ["confirmed", "shipped", "delivered"].includes(old.status)) await applyStockChange(env, old.id, "increment");
-          await env.DB.prepare("UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ?").bind(status, tracking_no ? sanitize(tracking_no, 50) : null, on).run();
+          const nextStatus = status === undefined ? old.status : status;
+          if (!ORDER_STATUSES.includes(nextStatus)) return jsonResponse({ error: "نامعتبر" }, 400, env, request);
+          if (!canTransitionOrderStatus(old.status, nextStatus)) {
+            return jsonResponse({ error: `تغییر ${old.status} به ${nextStatus} مجاز نیست` }, 400, env, request);
+          }
+          if (tracking_no === undefined && nextStatus === old.status) {
+            return jsonResponse({ error: "تغییری برای ذخیره وجود ندارد" }, 400, env, request);
+          }
+
+          const statements = [];
+          const statusChanged = nextStatus !== old.status;
+          if (statusChanged && ((old.status === "pending" && nextStatus === "confirmed") ||
+              (nextStatus === "cancelled" && ["confirmed", "shipped", "delivered"].includes(old.status)))) {
+            const { results: items } = await env.DB.prepare(
+              "SELECT product_id, color, size, qty FROM order_items WHERE order_id = ?"
+            ).bind(old.id).all();
+            for (const item of items) {
+              const stockSql = nextStatus === "confirmed"
+                ? "UPDATE variants SET stock = MAX(0, stock - ?) WHERE product_id = ? AND color = ? AND size = ? AND EXISTS (SELECT 1 FROM orders WHERE order_no = ? AND status = ?)"
+                : "UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ? AND EXISTS (SELECT 1 FROM orders WHERE order_no = ? AND status = ?)";
+              statements.push(env.DB.prepare(stockSql).bind(item.qty, item.product_id, item.color, item.size, on, old.status));
+            }
+          }
+          statements.push(env.DB.prepare(
+            "UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ? AND status = ?"
+          ).bind(nextStatus, tracking_no ? sanitize(tracking_no, 50) : null, on, old.status));
+
+          const results = await env.DB.batch(statements);
+          if (results[results.length - 1]?.meta?.changes === 0) {
+            return jsonResponse({ error: "وضعیت سفارش هم‌زمان تغییر کرده است؛ فهرست را تازه‌سازی کنید" }, 409, env, request);
+          }
           return jsonResponse({ ok: true }, 200, env, request);
         }
 

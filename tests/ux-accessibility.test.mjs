@@ -9,3 +9,9 @@ test("modal uses dialog semantics and keyboard focus management",()=>{assert.mat
 test("admin navigation and search controls are labelled",()=>{assert.match(admin,/role="tablist"/);assert.match(admin,/aria-controls="panel-\$\{t\}"/);assert.match(admin,/aria-labelledby="tab-\$\{t\}"/);assert.match(admin,/aria-label="فیلتر وضعیت سفارش/);assert.match(admin,/aria-label="فیلتر وضعیت محصولات"/);});
 test("admin cards and order actions have mobile layouts",()=>{assert.match(admin,/prod-admin__layout/);assert.match(css,/\.prod-admin__layout\{grid-template-columns:76px/);assert.match(css,/\.ocard__actions\{display:grid;grid-template-columns:repeat\(2/);assert.match(css,/#adminTabs\{display:flex;flex-wrap:nowrap;overflow-x:auto/);});
 test("reduced motion does not re-enable hero animation",()=>{assert.match(css,/prefers-reduced-motion: reduce\)[\s\S]*?\.hero__title em\{animation:none!important\}/);});
+
+test("frontend API retries only idempotent reads",()=>{
+  assert.match(app,/const method = String\(opts\.method \|\| 'GET'\)\.toUpperCase\(\)/);
+  assert.match(app,/const retryable = method === 'GET' \|\| method === 'HEAD'/);
+  assert.match(app,/if \(retryable && retries > 0 && !e\.status && navigator\.onLine\)/);
+});
