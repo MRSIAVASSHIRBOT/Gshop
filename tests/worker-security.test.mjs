@@ -270,3 +270,19 @@ test("multipart upload request bodies are not consumed by the global JSON parser
   assert.equal(response.status, 401);
   assert.equal(request.bodyUsed, false);
 });
+
+test("parses product details defensively when stored JSON is malformed", async () => {
+  const { parseJsonObject } = await import("../worker.js");
+  assert.deepEqual(parseJsonObject('{"material":"cotton"}'), { material: "cotton" });
+  assert.deepEqual(parseJsonObject("{broken"), {});
+  assert.deepEqual(parseJsonObject("[]"), {});
+  assert.deepEqual(parseJsonObject(null), {});
+});
+
+test("public catalogue queries exclude inactive product variants and images", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
+  assert.match(source, /INNER JOIN products p ON p\.id = v\.product_id WHERE p\.active = 1/);
+  assert.match(source, /INNER JOIN products p ON p\.id = i\.product_id WHERE p\.active = 1/);
+  assert.match(source, /Promise\.all\(\[\s*env\.DB\.prepare\("SELECT v\.product_id/);
+});
