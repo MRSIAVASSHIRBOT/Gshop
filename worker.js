@@ -104,6 +104,16 @@ function sanitize(str, maxLength = 500) {
   return String(str).trim().slice(0, maxLength).replace(/[\u0000-\u001F\u007F]/g, "");
 }
 
+export function parseJsonObject(value) {
+  if (typeof value !== "string" || !value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -269,14 +279,21 @@ function generateTelegramOrderMessage(order, items) {
 // ==========================================
 // 4. Database & Auth Helpers
 // ==========================================
+let settingsCache = { value: null, expiresAt: 0 };
+
 async function getSettings(env) {
+  const now = Date.now();
+  if (settingsCache.value && settingsCache.expiresAt > now) return { ...settingsCache.value };
   try {
     const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
     const settings = { ...DEFAULT_SETTINGS };
     for (const row of results) {
-      settings[row.key] = row.value;
+      if (typeof row.key === "string" && Object.hasOwn(DEFAULT_SETTINGS, row.key)) {
+        settings[row.key] = String(row.value ?? "");
+      }
     }
-    return settings;
+    settingsCache = { value: settings, expiresAt: now + 15_000 };
+    return { ...settings };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -617,12 +634,14 @@ export default {
       if (path === "/api/products" && method === "GET") {
         if (!checkRateLimit(`products:${clientIp}`, 120, 60000)) return jsonResponse({ error: "تعداد درخواست زیاد است" }, 429, env, request);
         const { results: products } = await env.DB.prepare("SELECT id, name, slug, price, compare_price, image, description, details, tag, category, sort_order, rating_avg, rating_count, active, created_at FROM products WHERE active = 1 ORDER BY sort_order ASC, id DESC").all();
-        const { results: variants } = await env.DB.prepare("SELECT product_id, color, size, stock, extra_price FROM variants").all();
-        const { results: images } = await env.DB.prepare("SELECT id, product_id, url, sort_order FROM product_images ORDER BY sort_order ASC").all();
+        const [variantResult, imageResult] = await Promise.all([
+          env.DB.prepare("SELECT v.product_id, v.color, v.size, v.stock, v.extra_price FROM variants v INNER JOIN products p ON p.id = v.product_id WHERE p.active = 1").all(),
+          env.DB.prepare("SELECT i.id, i.product_id, i.url, i.sort_order FROM product_images i INNER JOIN products p ON p.id = i.product_id WHERE p.active = 1 ORDER BY i.sort_order ASC").all()
+        ]);
         const variantMap = {}, imageMap = {};
-        for (const v of variants) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
-        for (const img of images) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
-        const formattedProducts = products.map(p => ({ ...p, details: p.details ? JSON.parse(p.details) : {}, variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
+        for (const v of variantResult.results) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
+        for (const img of imageResult.results) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
+        const formattedProducts = products.map(p => ({ ...p, details: parseJsonObject(p.details), variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
         return jsonResponse({ products: formattedProducts }, 200, env, request, { "Cache-Control": "public, max-age=60" });
       }
 
@@ -632,7 +651,7 @@ export default {
         if (!product) return jsonResponse({ error: "محصول یافت نشد" }, 404, env, request);
         const { results: variants } = await env.DB.prepare("SELECT color, size, stock, extra_price FROM variants WHERE product_id = ?").bind(productId).all();
         const { results: gallery } = await env.DB.prepare("SELECT id, url, sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order ASC").bind(productId).all();
-        return jsonResponse({ product: { ...product, details: product.details ? JSON.parse(product.details) : {}, variants, gallery } }, 200, env, request);
+        return jsonResponse({ product: { ...product, details: parseJsonObject(product.details), variants, gallery } }, 200, env, request);
       }
 
       if (/^\/api\/products\/\d+\/reviews$/.test(path) && method === "GET") {
@@ -906,7 +925,10 @@ export default {
         if (path === "/api/admin/settings" && method === "POST") {
           const allowedKeys = Object.keys(DEFAULT_SETTINGS), statements = [];
           for (const key of allowedKeys) if (body[key] !== undefined) statements.push(env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')").bind(key, String(body[key]).slice(0, 5000)));
-          if (statements.length) await env.DB.batch(statements);
+          if (statements.length) {
+            await env.DB.batch(statements);
+            settingsCache = { value: null, expiresAt: 0 };
+          }
           ctx.waitUntil(logAudit(env, "settings_update", "all", { keys: Object.keys(body) }, request, ctx));
           return jsonResponse({ ok: true }, 200, env, request);
         }
@@ -934,7 +956,7 @@ export default {
           const variantMap = {}, imageMap = {};
           for (const v of variants) { if (!variantMap[v.product_id]) variantMap[v.product_id] = []; variantMap[v.product_id].push(v); }
           for (const img of images) { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img); }
-          const result = products.map(p => ({ ...p, details: p.details ? JSON.parse(p.details) : {}, variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
+          const result = products.map(p => ({ ...p, details: parseJsonObject(p.details), variants: variantMap[p.id] || [], gallery: imageMap[p.id] || [] }));
           return jsonResponse({ products: result }, 200, env, request);
         }
 
