@@ -48,26 +48,27 @@ test("cart and checkout have dedicated small-screen ergonomics",()=>{
   assert.match(experience,/@media\(max-width:480px\)[\s\S]*?max-height:calc\(100dvh - 8px\)/);
 });
 
+
 test("static imagery reserves layout space and decodes asynchronously",()=>{
-  const images=[...html.matchAll(/<img\\b[^>]*>/g)].map(match=>match[0]);
+  const images=[...html.matchAll(/<img\b[^>]*>/g)].map(match=>match[0]);
   assert.ok(images.length >= 10, "expected editorial, social and trust imagery");
   for (const image of images) {
-    assert.match(image, /\\bwidth="\\d+"/, "image width must reserve layout space");
-    assert.match(image, /\\bheight="\\d+"/, "image height must reserve layout space");
-    assert.match(image, /\\bdecoding="async"/, "images should decode asynchronously");
+    assert.match(image, /\bwidth="\d+"/, "image width must reserve layout space");
+    assert.match(image, /\bheight="\d+"/, "image height must reserve layout space");
+    assert.match(image, /\bdecoding="async"/, "images should decode asynchronously");
   }
-  const eager=images.filter(image=>/\\bloading="eager"/.test(image));
+  const eager=images.filter(image=>/\bloading="eager"/.test(image));
   assert.equal(eager.length, 1, "only the primary hero image should load eagerly");
   assert.match(eager[0], /fetchpriority="high"/);
 });
 test("below-the-fold static imagery is lazy-loaded",()=>{
-  const images=[...html.matchAll(/<img\\b[^>]*>/g)].map(match=>match[0]);
+  const images=[...html.matchAll(/<img\b[^>]*>/g)].map(match=>match[0]);
   for (const image of images.filter(image=>!image.includes('id="heroImg1"'))) {
-    assert.match(image, /\\bloading="lazy"/);
+    assert.match(image, /\bloading="lazy"/);
   }
 });
 test("critical application scripts remain deferred",()=>{
   for (const file of ["keys.js","content.js","app.js","admin.js"]) {
-    assert.match(html, new RegExp('<script\\\\s+src="' + file + '"\\\\s+defer'));
+    assert.match(html, new RegExp('<script\\s+src="' + file + '"\\s+defer'));
   }
 });
