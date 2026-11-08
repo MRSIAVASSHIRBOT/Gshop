@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import { aggregateOrderItems, generateOrderNumber, getCorsHeaders, parseDigipayAccessToken, parseDigipayCallback, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -54,6 +54,38 @@ test("parses Digipay access tokens without exposing provider error bodies", () =
   const marker = "provider-response-must-not-be-logged";
   assert.throws(() => parseDigipayAccessToken(`not-json-${marker}`), error => !error.message.includes(marker));
   assert.throws(() => parseDigipayAccessToken(JSON.stringify({ error_description: marker })), error => !error.message.includes(marker));
+});
+
+
+test("parses DigiPay callbacks using provider order ID, tracking code, amount, and payment type", () => {
+  assert.deepEqual(parseDigipayCallback({
+    providerId: "GS-ORDER-123",
+    trackingCode: "19259313601650191846745",
+    result: "SUCCESS",
+    amount: "2500000",
+    type: "0"
+  }), {
+    providerId: "GS-ORDER-123",
+    trackingCode: "19259313601650191846745",
+    result: "SUCCESS",
+    amount: 2500000,
+    type: 0
+  });
+  assert.equal(parseDigipayCallback({
+    providerId: "GS-ORDER-123",
+    trackingCode: "track",
+    result: "success",
+    amount: 2500000,
+    type: 11
+  }).result, "SUCCESS");
+});
+
+test("rejects incomplete or malformed DigiPay callback identifiers and amounts", () => {
+  assert.equal(parseDigipayCallback({ trackingCode: "track", result: "SUCCESS", amount: 1000, type: 11 }), null);
+  assert.equal(parseDigipayCallback({ providerId: "GS-1", result: "SUCCESS", amount: 1000, type: 11 }), null);
+  assert.equal(parseDigipayCallback({ providerId: "GS-1", trackingCode: "track", result: "SUCCESS", amount: 0, type: 11 }), null);
+  assert.equal(parseDigipayCallback({ providerId: "GS-1", trackingCode: "track", result: "SUCCESS", amount: 1000.5, type: 11 }), null);
+  assert.equal(parseDigipayCallback({ providerId: "GS-1", trackingCode: "track", result: "SUCCESS", amount: 1000, type: 999 }), null);
 });
 
 test("bounds Digipay authentication response bodies", async () => {
