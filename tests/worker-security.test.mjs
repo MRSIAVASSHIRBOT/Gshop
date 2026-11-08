@@ -300,11 +300,12 @@ test("tracking numbers can be updated without an order status transition", async
   const token = "b".repeat(64);
   const tokenHash = await hashSessionToken(token);
   let batchedSql = [];
+  const preparedSql = [];
   const DB = {
     prepare(sql) {
+      preparedSql.push(sql);
       let values = [];
       return {
-        sql,
         bind(...args) { values = args; return this; },
         async first() {
           if (sql.includes("SELECT * FROM sessions")) return { token: tokenHash, expires_at: Date.now() + 60_000 };
@@ -315,7 +316,7 @@ test("tracking numbers can be updated without an order status transition", async
       };
     },
     async batch(statements) {
-      batchedSql = statements.map(statement => statement.sql || "");
+      batchedSql = preparedSql.slice(-statements.length);
       return statements.map(() => ({ meta: { changes: 1 } }));
     }
   };
