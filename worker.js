@@ -28,6 +28,10 @@ const ORDER_TRANSITIONS = {
   cancelled: []
 };
 
+export function canTransitionOrderStatus(current, next) {
+  return current === next || Boolean(ORDER_TRANSITIONS[current]?.includes(next));
+}
+
 const PROVINCES = [
   "آذربایجان شرقی","آذربایجان غربی","اردبیل","اصفهان","البرز","ایلام","بوشهر",
   "تهران","چهارمحال و بختیاری","خراسان جنوبی","خراسان رضوی","خراسان شمالی",
@@ -1062,13 +1066,39 @@ export default {
 
         if (/^\/api\/admin\/orders\/[^/]+$/.test(path) && method === "PATCH") {
           const on = decodeURIComponent(path.split("/").pop()), { status, tracking_no } = body;
-          if (!ORDER_STATUSES.includes(status)) return jsonResponse({ error: "نامعتبر" }, 400, env, request);
           const old = await env.DB.prepare("SELECT id, status FROM orders WHERE order_no = ?").bind(on).first();
           if (!old) return jsonResponse({ error: "یافت نشد" }, 404, env, request);
-          if (!ORDER_TRANSITIONS[old.status]?.includes(status)) return jsonResponse({ error: `تغییر ${old.status} به ${status} مجاز نیست` }, 400, env, request);
-          if (status === "confirmed" && old.status === "pending") { const upd = await env.DB.prepare("UPDATE orders SET status='confirmed' WHERE order_no=? AND status='pending'").bind(on).run(); if (upd.meta.changes > 0) await applyStockChange(env, old.id, "decrement"); }
-          if (status === "cancelled" && ["confirmed", "shipped", "delivered"].includes(old.status)) await applyStockChange(env, old.id, "increment");
-          await env.DB.prepare("UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ?").bind(status, tracking_no ? sanitize(tracking_no, 50) : null, on).run();
+          const nextStatus = status === undefined ? old.status : status;
+          if (!ORDER_STATUSES.includes(nextStatus)) return jsonResponse({ error: "نامعتبر" }, 400, env, request);
+          if (!canTransitionOrderStatus(old.status, nextStatus)) {
+            return jsonResponse({ error: `تغییر ${old.status} به ${nextStatus} مجاز نیست` }, 400, env, request);
+          }
+          if (tracking_no === undefined && nextStatus === old.status) {
+            return jsonResponse({ error: "تغییری برای ذخیره وجود ندارد" }, 400, env, request);
+          }
+
+          const statements = [];
+          const statusChanged = nextStatus !== old.status;
+          if (statusChanged && ((old.status === "pending" && nextStatus === "confirmed") ||
+              (nextStatus === "cancelled" && ["confirmed", "shipped", "delivered"].includes(old.status)))) {
+            const { results: items } = await env.DB.prepare(
+              "SELECT product_id, color, size, qty FROM order_items WHERE order_id = ?"
+            ).bind(old.id).all();
+            for (const item of items) {
+              const stockSql = nextStatus === "confirmed"
+                ? "UPDATE variants SET stock = MAX(0, stock - ?) WHERE product_id = ? AND color = ? AND size = ? AND EXISTS (SELECT 1 FROM orders WHERE order_no = ? AND status = ?)"
+                : "UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ? AND EXISTS (SELECT 1 FROM orders WHERE order_no = ? AND status = ?)";
+              statements.push(env.DB.prepare(stockSql).bind(item.qty, item.product_id, item.color, item.size, on, old.status));
+            }
+          }
+          statements.push(env.DB.prepare(
+            "UPDATE orders SET status = ?, tracking_no = COALESCE(?, tracking_no), updated_at = datetime('now') WHERE order_no = ? AND status = ?"
+          ).bind(nextStatus, tracking_no ? sanitize(tracking_no, 50) : null, on, old.status));
+
+          const results = await env.DB.batch(statements);
+          if (results[results.length - 1]?.meta?.changes === 0) {
+            return jsonResponse({ error: "وضعیت سفارش هم‌زمان تغییر کرده است؛ فهرست را تازه‌سازی کنید" }, 409, env, request);
+          }
           return jsonResponse({ ok: true }, 200, env, request);
         }
 
