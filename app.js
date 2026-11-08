@@ -162,24 +162,6 @@ const isPostal = (p) => /^\d{10}$/.test(String(p).replace(/\D/g, ''));
     .citem__later-btn{font-size:11px;color:var(--dim);padding:5px 10px;border-radius:100px;transition:all .25s var(--ease)}
     .citem__later-btn:hover{background:var(--glass-bg-hi);color:var(--purple)}
     .citem__note-show{font-size:11px;color:var(--gold);margin-top:4px;padding:5px 10px;background:color-mix(in srgb,var(--gold) 10%,transparent);border-radius:8px;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .pcard__viewers{position:absolute;bottom:14px;left:14px;padding:6px 12px;border-radius:100px;background:rgba(255,75,62,.9);backdrop-filter:blur(12px);color:#fff;font-size:10px;font-weight:700;z-index:3;display:flex;align-items:center;gap:5px;animation:pulseViewers 2.5s ease-in-out infinite}
-    .pcard__viewers::before{content:'';width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.5s infinite}
-    @keyframes pulseViewers{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .trust-badges{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:36px 0 0}
-    @media(max-width:700px){.trust-badges{grid-template-columns:repeat(2,1fr);gap:12px}}
-    .trust-badge{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--glass-bg);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-md);transition:all .4s var(--spring)}
-    .trust-badge:hover{border-color:var(--lime);transform:translateY(-4px);box-shadow:0 20px 40px -15px rgba(0,0,0,.5),0 0 30px -10px var(--glow-lime)}
-    .trust-badge__icon{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--lime) 15%,transparent),color-mix(in srgb,var(--green) 10%,transparent));display:grid;place-items:center;font-size:20px;flex-shrink:0}
-    .trust-badge__text b{display:block;font-size:12.5px;color:var(--text);font-weight:600;margin-bottom:3px}
-    .trust-badge__text span{font-size:10.5px;color:var(--dim)}
-    .purchase-popup{position:fixed;bottom:90px;right:24px;z-index:140;background:var(--glass-bg-hi);backdrop-filter:blur(30px);border:1px solid var(--glass-line);border-radius:var(--r-lg);padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-lg);max-width:calc(100vw - 40px);transform:translateX(120%);transition:transform .55s var(--spring);font-size:12.5px}
-    .purchase-popup.on{transform:translateX(0)}
-    .purchase-popup img{width:44px;height:55px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--glass-line)}
-    .purchase-popup__text{flex:1;min-width:0}
-    .purchase-popup__text b{color:var(--lime);font-weight:700;text-shadow:0 0 12px var(--glow-lime)}
-    .purchase-popup__text small{display:block;color:var(--dim);font-size:10.5px;margin-top:3px}
-    @media(max-width:700px){.purchase-popup{bottom:130px;right:16px;left:16px;max-width:none}}
     .gallery__nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:3;transition:all .3s var(--spring);opacity:0}
     .gallery__main:hover .gallery__nav{opacity:1}
     .gallery__nav:hover{background:var(--lime);color:var(--ink);border-color:var(--lime);transform:translateY(-50%) scale(1.12)}
