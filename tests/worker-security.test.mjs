@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, hashSessionToken, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -285,4 +285,13 @@ test("public catalogue queries exclude inactive product variants and images", as
   assert.match(source, /INNER JOIN products p ON p\.id = v\.product_id WHERE p\.active = 1/);
   assert.match(source, /INNER JOIN products p ON p\.id = i\.product_id WHERE p\.active = 1/);
   assert.match(source, /Promise\.all\(\[\s*env\.DB\.prepare\("SELECT v\.product_id/);
+});
+
+test("order status transitions allow metadata-only updates but reject invalid jumps", async () => {
+  assert.equal(canTransitionOrderStatus("shipped", "shipped"), true);
+  assert.equal(canTransitionOrderStatus("confirmed", "confirmed"), true);
+  assert.equal(canTransitionOrderStatus("pending", "confirmed"), true);
+  assert.equal(canTransitionOrderStatus("pending", "delivered"), false);
+  assert.equal(canTransitionOrderStatus("delivered", "cancelled"), false);
+  assert.equal(canTransitionOrderStatus("cancelled", "pending"), false);
 });
