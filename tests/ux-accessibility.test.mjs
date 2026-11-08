@@ -32,3 +32,18 @@ test("product cards show category and only render ratings when review count exis
   assert.match(app,/ratingCount > 0/);
   assert.match(app,/class="pcard__rating"/);
 });
+
+test("checkout shows an escaped order review and authoritative server validation note",()=>{
+  assert.match(app,/class="checkout-order-summary"/);
+  assert.match(app,/checkout-order-summary__items/);
+  assert.match(app,/موجودی و قیمت نهایی هر تنوع هنگام ثبت سفارش در سرور دوباره بررسی می‌شود/);
+  assert.match(app,/checkout-shipping-note/);
+});
+test("checkout validation errors clear when the customer corrects a field",()=>{
+  assert.match(app,/checkoutFields\.forEach/);
+  assert.match(app,/field\.removeAttribute\('aria-invalid'\)/);
+});
+test("cart and checkout have dedicated small-screen ergonomics",()=>{
+  assert.match(experience,/\.drawer__foot\{padding:15px 16px calc\(14px \+ env\(safe-area-inset-bottom\)\)\}/);
+  assert.match(experience,/@media\(max-width:480px\)[\s\S]*?max-height:calc\(100dvh - 8px\)/);
+});
