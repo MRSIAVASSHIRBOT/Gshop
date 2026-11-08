@@ -41,7 +41,21 @@ const URL_ZIBAL_VERIFY = "https://gateway.zibal.ir/v1/verify";
 const URL_ZIBAL_START = "https://gateway.zibal.ir/start/";
 const URL_DIGIPAY_AUTH = "https://api.mydigipay.com/digipay/api/oauth/token";
 const URL_DIGIPAY_TICKET = "https://api.mydigipay.com/digipay/api/tickets/business?type=11";
-const URL_DIGIPAY_VERIFY = "https://api.mydigipay.com/digipay/api/verify";
+const URL_DIGIPAY_VERIFY = "https://api.mydigipay.com/digipay/api/purchases/verify";
+
+const DIGIPAY_PAYMENT_TYPES = new Set([0, 5, 11, 13, 24]);
+
+/** Normalize and validate the provider callback before any database lookup. */
+export function parseDigipayCallback(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const providerId = String(payload.providerId ?? "").trim();
+  const trackingCode = String(payload.trackingCode ?? "").trim();
+  const result = String(payload.result ?? "").trim().toUpperCase();
+  const amount = Number(payload.amount);
+  const type = Number(payload.type);
+  if (!providerId || !trackingCode || !result || !Number.isSafeInteger(amount) || amount <= 0 || !DIGIPAY_PAYMENT_TYPES.has(type)) return null;
+  return { providerId, trackingCode, result, amount, type };
+}
 
 // ==========================================
 // 2. Security & Helper Functions
@@ -685,32 +699,82 @@ export default {
       }
 
       if (path === "/api/payment/digipay/verify" && (method === "POST" || method === "GET")) {
-        let token, result;
-        if (method === "POST") { token = body.trackingCode || body.token; result = body.result || ""; } 
-        else { token = url.searchParams.get("trackingCode") || url.searchParams.get("token"); result = url.searchParams.get("result") || ""; }
-        if (!token) return Response.redirect(`${siteUrl}/?payment=invalid`, 302);
-        const payment = await env.DB.prepare("SELECT * FROM payments WHERE track_id = ?").bind(token).first();
-        if (!payment) return Response.redirect(`${siteUrl}/?payment=invalid`, 302);
-        if (result !== "SUCCESS") { await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(token).run(); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
+        const callbackPayload = method === "POST" ? body : Object.fromEntries(url.searchParams.entries());
+        const callback = parseDigipayCallback(callbackPayload);
+        if (!callback) return Response.redirect(siteUrl + "/?payment=invalid", 302);
+
+        const { providerId, trackingCode, result, amount, type } = callback;
+        const payment = await env.DB.prepare("SELECT * FROM payments WHERE order_no = ? ORDER BY created_at DESC LIMIT 1").bind(providerId).first();
+        if (!payment || String(payment.order_no) !== providerId) return Response.redirect(siteUrl + "/?payment=invalid", 302);
+        if (payment.status === "verified") return Response.redirect(siteUrl + "/?payment=success&order=" + encodeURIComponent(providerId), 302);
+        if (payment.status !== "pending") return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
+
+        if (result !== "SUCCESS") {
+          await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(payment.track_id).run();
+          return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
+        }
+
         try {
+          const expectedAmount = Math.round(Number(payment.amount) * 10);
+          if (!Number.isSafeInteger(expectedAmount) || amount !== expectedAmount) throw new Error("مبلغ کال‌بک با سفارش مطابقت ندارد");
+
           const accessToken = await getDigipayAccessToken(env);
-          const verifyReq = await fetch(URL_DIGIPAY_VERIFY, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}`, "Agent": "WEB", "Digipay-Version": "2022-02-02" }, body: JSON.stringify({ trackingCode: token }) });
+          const verifyUrl = URL_DIGIPAY_VERIFY + "?type=" + encodeURIComponent(type);
+          const verifyReq = await fetch(verifyUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + accessToken,
+              "Agent": "WEB",
+              "Digipay-Version": "2022-02-02"
+            },
+            body: JSON.stringify({ trackingCode, providerId })
+          });
           const verifyRes = await readDigipayJsonResponse(verifyReq);
-          if (!verifyRes.result || verifyRes.result.status !== 0) throw new Error("خطا در تایید پرداخت دیجی‌پی");
-          // Require an explicit exact amount from the provider before confirming payment.
-          if (!Number.isFinite(Number(verifyRes.amount)) || Number(verifyRes.amount) !== Math.round(payment.amount * 10)) throw new Error("مبلغ پرداخت نامعتبر است");
-          const updatePayment = await env.DB.prepare("UPDATE payments SET status='verified', ref_number = ?, verified_at = datetime('now') WHERE track_id = ? AND status='pending'").bind(String(verifyRes.rrn || token), token).run();
-          if (updatePayment.meta.changes > 0) {
-            const updateOrder = await env.DB.prepare("UPDATE orders SET status='confirmed', updated_at = datetime('now') WHERE order_no = ? AND status='pending'").bind(payment.order_no).run();
-            if (updateOrder.meta.changes > 0) {
-              const orderInfo = await env.DB.prepare("SELECT id FROM orders WHERE order_no = ?").bind(payment.order_no).first();
-              if (orderInfo) await applyStockChange(env, orderInfo.id, "decrement");
-              const fullOrder = await env.DB.prepare("SELECT * FROM orders WHERE order_no = ?").bind(payment.order_no).first();
-              if (fullOrder) ctx.waitUntil(sendTelegramMessage(env, `✅ <b>پرداخت موفق دیجی‌پی</b>\n\n🆔 <code>${escapeHtml(fullOrder.order_no)}</code>\n👤 ${escapeHtml(fullOrder.name)}\n💳 مبلغ: <b>${formatMoney(fullOrder.total)} تومان</b>\n🔢 پیگیری: <code>${escapeHtml(verifyRes.rrn || token)}</code>`).catch(() => {}));
+          if (!verifyRes.result || verifyRes.result.status !== 0) throw new Error("تأیید نهایی دیجی‌پی ناموفق بود");
+          if (String(verifyRes.providerId ?? "") !== providerId) throw new Error("شناسه سفارش در پاسخ تأیید دیجی‌پی مطابقت ندارد");
+          if (!Number.isFinite(Number(verifyRes.amount)) || Number(verifyRes.amount) !== expectedAmount) throw new Error("مبلغ تأییدشده با سفارش مطابقت ندارد");
+
+          const updatePayment = await env.DB.prepare(
+            "UPDATE payments SET status='verified', ref_number = ?, verified_at = datetime('now') WHERE track_id = ? AND status='pending'"
+          ).bind(String(verifyRes.rrn || trackingCode), payment.track_id).run();
+
+          if (updatePayment.meta.changes === 0) {
+            const latest = await env.DB.prepare("SELECT status FROM payments WHERE track_id = ?").bind(payment.track_id).first();
+            if (latest?.status === "verified") return Response.redirect(siteUrl + "/?payment=success&order=" + encodeURIComponent(providerId), 302);
+            throw new Error("وضعیت پرداخت هم‌زمان تغییر کرده است");
+          }
+
+          const updateOrder = await env.DB.prepare(
+            "UPDATE orders SET status='confirmed', updated_at = datetime('now') WHERE order_no = ? AND status='pending'"
+          ).bind(providerId).run();
+
+          if (updateOrder.meta.changes > 0) {
+            const orderInfo = await env.DB.prepare("SELECT id FROM orders WHERE order_no = ?").bind(providerId).first();
+            if (orderInfo) await applyStockChange(env, orderInfo.id, "decrement");
+
+            const fullOrder = await env.DB.prepare("SELECT * FROM orders WHERE order_no = ?").bind(providerId).first();
+            if (fullOrder) {
+              const telegramText =
+                "✅ <b>پرداخت موفق دیجی‌پی</b>\n\n" +
+                "🆔 <code>" + escapeHtml(fullOrder.order_no) + "</code>\n" +
+                "👤 " + escapeHtml(fullOrder.name) + "\n" +
+                "💳 مبلغ: <b>" + formatMoney(fullOrder.total) + " تومان</b>\n" +
+                "🔢 پیگیری: <code>" + escapeHtml(verifyRes.rrn || trackingCode) + "</code>";
+              const notification = sendTelegramMessage(env, telegramText).then(sent => {
+                if (!sent) console.error("Digipay payment verified, but Telegram notification was not delivered", { orderNo: providerId });
+              }).catch(error => {
+                console.error("Digipay Telegram notification failed", { orderNo: providerId, error: String(error?.message || error).slice(0, 160) });
+              });
+              ctx.waitUntil(notification);
             }
           }
-          return Response.redirect(`${siteUrl}/?payment=success&order=${payment.order_no}`, 302);
-        } catch { ctx.waitUntil(logAudit(env, "digipay_verify_error", token, { reason_code: "digipay_verify_failed" }, request, ctx)); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
+
+          return Response.redirect(siteUrl + "/?payment=success&order=" + encodeURIComponent(providerId), 302);
+        } catch {
+          ctx.waitUntil(logAudit(env, "digipay_verify_error", providerId, { reason_code: "digipay_verify_failed" }, request, ctx));
+          return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
+        }
       }
 
       if (path === "/api/admin/login" && method === "POST") {
