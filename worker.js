@@ -288,7 +288,7 @@ async function getSettings(env) {
     const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
     const settings = { ...DEFAULT_SETTINGS };
     for (const row of results) {
-      if (typeof row.key === "string" && Object.hasOwn(DEFAULT_SETTINGS, row.key)) {
+      if (typeof row.key === "string") {
         settings[row.key] = String(row.value ?? "");
       }
     }
