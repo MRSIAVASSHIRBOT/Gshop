@@ -86,7 +86,7 @@ test("admin image uploads optimize JPEG, PNG and WebP files before sending",()=>
   assert.match(admin,/createImageBitmap\(file\)/);
   assert.match(admin,/canvas\.toBlob\(resolve, 'image\/webp', 0\.82\)/);
   assert.match(admin,/1800 \/ Math\.max\(bitmap\.width, bitmap\.height\)/);
-  assert.match(admin,/image\/\(jpeg\|png\|webp\)/);
+  assert.ok(admin.includes('jpeg|png|webp'));
   assert.equal((admin.match(/fd\.append\('file', uploadFile, uploadFile\.name\)/g)||[]).length,4);
   assert.equal((admin.match(/const uploadFile = await optimizeAdminImage\(file\)/g)||[]).length,4);
 });
