@@ -72,3 +72,10 @@ test("critical application scripts remain deferred",()=>{
     assert.match(html, new RegExp('<script\\s+src="' + file + '"\\s+defer'));
   }
 });
+
+
+test("product grid defers below-the-fold images behind the hero image",()=>{
+  assert.match(app,/loading="lazy" fetchpriority="low" decoding="async"/);
+  assert.doesNotMatch(app,/idx < 4 \? 'eager' : 'lazy'/);
+  assert.doesNotMatch(app,/idx < 2 \? 'high' : 'auto'/);
+});
