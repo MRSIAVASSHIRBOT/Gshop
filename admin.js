@@ -12,7 +12,7 @@ const ADMIN_SETTINGS_CACHE_KEY = K_ADMIN.SETTINGS_CACHE || 'gshop_settings_cache
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
 /* ---------- Admin image optimization ---------- */
 async function optimizeAdminImage(file) {
-  if (!file || !/^image\\/(jpeg|png|webp)$/i.test(file.type || '')) return file;
+  if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || '')) return file;
   if (file.size > 20 * 1024 * 1024) throw new Error('حجم فایل اصلی بیش از ۲۰ مگابایت است');
   if (typeof createImageBitmap !== 'function') return file;
 
@@ -30,7 +30,7 @@ async function optimizeAdminImage(file) {
     context.drawImage(bitmap, 0, 0, width, height);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.82));
     if (!blob || blob.size >= file.size) return file;
-    const baseName = file.name.replace(/\\.[^.]+$/, '') || 'image';
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'image';
     return new File([blob], baseName + '.webp', { type: 'image/webp', lastModified: Date.now() });
   } catch {
     return file;
