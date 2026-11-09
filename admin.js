@@ -13,7 +13,7 @@ const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: 
 /* ---------- Admin image optimization ---------- */
 async function optimizeAdminImage(file) {
   if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || '')) return file;
-  if (file.size > 20 * 1024 * 1024) throw new Error('حجم فایل اصلی بیش از ۲۰ مگابایت است');
+  if (file.size > 20 * 1024 * 1024) return file;
   if (typeof createImageBitmap !== 'function') return file;
 
   let bitmap;
