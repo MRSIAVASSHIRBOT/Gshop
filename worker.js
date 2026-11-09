@@ -363,18 +363,18 @@ async function logAudit(env, action, target, payload, request, ctx) {
 // ==========================================
 let digipayTokenCache = { token: null, expiresAt: 0 };
 
-export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
+export async function readBoundedRequestBytes(request, maxBytes = 1024 * 1024) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new TypeError("Request byte limit must be a positive safe integer");
   }
   const declaredLength = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-    await request.body?.cancel();
+    try { await request.body?.cancel(); } catch {}
     const error = new Error("Request body is too large");
     error.status = 413;
     throw error;
   }
-  if (!request.body) return "";
+  if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();
   const chunks = [];
   let totalBytes = 0;
@@ -384,7 +384,7 @@ export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
-        await reader.cancel();
+        try { await reader.cancel(); } catch {}
         const error = new Error("Request body is too large");
         error.status = 413;
         throw error;
@@ -400,6 +400,11 @@ export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return bytes;
+}
+
+export async function readBoundedRequestText(request, maxBytes = 1024 * 1024) {
+  const bytes = await readBoundedRequestBytes(request, maxBytes);
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
@@ -919,10 +924,30 @@ export default {
 
         if (path === "/api/admin/upload" && method === "POST") {
           if (!checkRateLimit(`upload:${clientIp}`, 30, 3600000)) return jsonResponse({ error: "محدودیت آپلود" }, 429, env, request);
-          const declaredLength = Number(request.headers.get("Content-Length"));
-          if (Number.isFinite(declaredLength) && declaredLength > 5 * 1024 * 1024 + 64 * 1024) return jsonResponse({ error: "حجم درخواست آپلود بیش از حد مجاز است" }, 413, env, request);
-          const formData = await request.formData(), file = formData.get("file");
-          if (!file || typeof file === "string" || file.size > 5242880 || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) return jsonResponse({ error: "فایل نامعتبر یا بیش از ۵ مگابایت" }, 400, env, request);
+          const maxFileBytes = 5 * 1024 * 1024;
+          const maxRequestBytes = maxFileBytes + 64 * 1024;
+          const contentType = request.headers.get("Content-Type") || "";
+          if (!/^multipart\/form-data\s*;/i.test(contentType)) return jsonResponse({ error: "فرمت درخواست آپلود نامعتبر است" }, 400, env, request);
+
+          let requestBytes;
+          try {
+            requestBytes = await readBoundedRequestBytes(request, maxRequestBytes);
+          } catch (error) {
+            if (error?.status === 413) return jsonResponse({ error: "حجم درخواست آپلود بیش از حد مجاز است" }, 413, env, request);
+            return jsonResponse({ error: "فرمت درخواست آپلود نامعتبر است" }, 400, env, request);
+          }
+
+          const uploadHeaders = new Headers(request.headers);
+          uploadHeaders.delete("Content-Length");
+          let formData;
+          try {
+            formData = await new Request(request.url, { method: "POST", headers: uploadHeaders, body: requestBytes }).formData();
+          } catch {
+            return jsonResponse({ error: "فرمت درخواست آپلود نامعتبر است" }, 400, env, request);
+          }
+
+          const file = formData.get("file");
+          if (!file || typeof file === "string" || file.size > maxFileBytes || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) return jsonResponse({ error: "فایل نامعتبر یا بیش از ۵ مگابایت" }, 400, env, request);
           const tgFormData = new FormData();
           tgFormData.append("chat_id", String(env.TELEGRAM_CHAT_ID).split(/[,،\s]+/)[0].trim());
           tgFormData.append("document", file, file.name.replace(/[^\w.\-]/g, "_").slice(0, 100) || "image.jpg");
