@@ -937,8 +937,7 @@ export default {
             return jsonResponse({ error: "فرمت درخواست آپلود نامعتبر است" }, 400, env, request);
           }
 
-          const uploadHeaders = new Headers(request.headers);
-          uploadHeaders.delete("Content-Length");
+          const uploadHeaders = new Headers({ "Content-Type": contentType });
           let formData;
           try {
             formData = await new Request(request.url, { method: "POST", headers: uploadHeaders, body: requestBytes }).formData();
