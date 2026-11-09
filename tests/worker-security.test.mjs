@@ -287,7 +287,7 @@ test("admin multipart uploads enforce the streaming body limit without Content-L
   const boundary = "----gshop-bounded-upload";
   const encoder = new TextEncoder();
   const prefix = encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="large.png"\r\nContent-Type: image/png\r\n\r\n`);
-  const fileBytes = new Uint8Array(5 * 1024 * 1024 + 1);
+  const fileBytes = new Uint8Array(5 * 1024 * 1024 + 64 * 1024 + 1);
   const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
   const body = new Uint8Array(prefix.length + fileBytes.length + suffix.length);
   body.set(prefix, 0);
