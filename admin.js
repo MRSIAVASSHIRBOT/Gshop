@@ -10,6 +10,35 @@ const ADMIN_CONTENT_CACHE_KEY = K_ADMIN.CONTENT_CACHE || 'gshop_content_cache_v7
 const ADMIN_SETTINGS_CACHE_KEY = K_ADMIN.SETTINGS_CACHE || 'gshop_settings_cache_v7';
 
 const adminState = { isAdmin: false, currentTab: 'dashboard', editingProductId: null };
+/* ---------- Admin image optimization ---------- */
+async function optimizeAdminImage(file) {
+  if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || '')) return file;
+  if (file.size > 20 * 1024 * 1024) throw new Error('حجم فایل اصلی بیش از ۲۰ مگابایت است');
+  if (typeof createImageBitmap !== 'function') return file;
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: true });
+    if (!context) return file;
+    context.drawImage(bitmap, 0, 0, width, height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'image';
+    return new File([blob], baseName + '.webp', { type: 'image/webp', lastModified: Date.now() });
+  } catch {
+    return file;
+  } finally {
+    bitmap?.close?.();
+  }
+}
+
 
 /* ---------- Open/Close ---------- */
 async function openAdmin() {
@@ -426,10 +455,11 @@ function openEditProduct(pid) {
         fi.onchange = async (ev) => {
           const file = ev.target.files[0];
           if (!file) return;
-          if (file.size > 5 * 1024 * 1024) { toast('حجم بیش از ۵ مگابایت', 'err'); return; }
+          const uploadFile = await optimizeAdminImage(file);
+          if (uploadFile.size > 5 * 1024 * 1024) { toast('حجم عکس پس از بهینه‌سازی هنوز بیش از ۵ مگابایت است', 'err'); return; }
           try {
             toast('در حال آپلود...');
-            const fd = new FormData(); fd.append('file', file);
+            const fd = new FormData(); fd.append('file', uploadFile, uploadFile.name);
             const token = localStorage.getItem(ADMIN_TOKEN_KEY);
             const r = await fetch(API + '/api/admin/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
             const data = await r.json();
@@ -596,10 +626,11 @@ async function openGalleryManager(pid) {
     fileInput.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) { toast('حجم بیش از ۵ مگابایت', 'err'); return; }
+      const uploadFile = await optimizeAdminImage(file);
+          if (uploadFile.size > 5 * 1024 * 1024) { toast('حجم عکس پس از بهینه‌سازی هنوز بیش از ۵ مگابایت است', 'err'); return; }
       try {
         toast('در حال آپلود...');
-        const fd = new FormData(); fd.append('file', file);
+        const fd = new FormData(); fd.append('file', uploadFile, uploadFile.name);
         const token = localStorage.getItem(ADMIN_TOKEN_KEY);
         const r = await fetch(API + '/api/admin/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
         const data = await r.json();
@@ -702,10 +733,11 @@ async function loadAddProduct() {
         fi.onchange = async (ev) => {
           const file = ev.target.files[0];
           if (!file) return;
-          if (file.size > 5 * 1024 * 1024) { toast('حجم بیش از ۵ مگابایت', 'err'); return; }
+          const uploadFile = await optimizeAdminImage(file);
+          if (uploadFile.size > 5 * 1024 * 1024) { toast('حجم عکس پس از بهینه‌سازی هنوز بیش از ۵ مگابایت است', 'err'); return; }
           try {
             toast('در حال آپلود...');
-            const fd = new FormData(); fd.append('file', file);
+            const fd = new FormData(); fd.append('file', uploadFile, uploadFile.name);
             const token = localStorage.getItem(ADMIN_TOKEN_KEY);
             const r = await fetch(API + '/api/admin/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
             const data = await r.json();
@@ -1255,7 +1287,8 @@ async function loadContentPanel() {
       fileInput.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 5 * 1024 * 1024) { toast('حجم بیش از ۵ مگابایت', 'err'); return; }
+        const uploadFile = await optimizeAdminImage(file);
+          if (uploadFile.size > 5 * 1024 * 1024) { toast('حجم عکس پس از بهینه‌سازی هنوز بیش از ۵ مگابایت است', 'err'); return; }
         const reader = new FileReader();
         reader.onload = ev => { imgEl.src = ev.target.result; };
         reader.readAsDataURL(file);
@@ -1263,7 +1296,7 @@ async function loadContentPanel() {
         btn.textContent = '⏳ در حال آپلود...';
         btn.disabled = true;
         try {
-          const fd = new FormData(); fd.append('file', file);
+          const fd = new FormData(); fd.append('file', uploadFile, uploadFile.name);
           const token = localStorage.getItem(ADMIN_TOKEN_KEY);
           const resp = await fetch(API + '/api/admin/upload', { method: 'POST', headers: { 'X-Admin-Token': token }, body: fd });
           const data = await resp.json();
