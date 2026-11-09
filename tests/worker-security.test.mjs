@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, getPublicImageHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -334,4 +334,18 @@ test("admin order CSV reads only items belonging to the exported latest orders",
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
   assert.match(source, /FROM order_items oi INNER JOIN orders o ON o\.id = oi\.order_id WHERE o\.id IN \(SELECT id FROM orders ORDER BY id DESC LIMIT 5000\)/);
+});
+
+
+test("public image responses permit cross-origin embedding without relaxing API defaults", () => {
+  const headers = getPublicImageHeaders("image/jpeg", 12345);
+  assert.equal(headers["Cross-Origin-Resource-Policy"], "cross-origin");
+  assert.equal(headers["Access-Control-Allow-Origin"], "*");
+  assert.equal(headers["Content-Type"], "image/jpeg");
+  assert.equal(headers["Content-Length"], "12345");
+  assert.equal(headers["Cache-Control"], "public, max-age=31536000, immutable");
+  assert.equal(headers["X-Content-Type-Options"], "nosniff");
+
+  const apiRequest = new Request("https://api.example.test/api/orders");
+  assert.equal(getCorsHeaders(apiRequest, {})["Access-Control-Allow-Origin"], undefined);
 });

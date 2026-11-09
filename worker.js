@@ -72,6 +72,20 @@ const securityHeaders = {
   "Cross-Origin-Resource-Policy": "same-origin"
 };
 
+// Image files are intentionally public and embedded by the storefront across
+// the gshop11.ir and workers.dev origins. Keep restrictive defaults for API
+// responses, but explicitly permit cross-origin embedding for public images.
+export function getPublicImageHeaders(contentType, byteLength) {
+  return {
+    "Content-Type": contentType,
+    "Content-Length": String(byteLength),
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Access-Control-Allow-Origin": "*",
+    ...securityHeaders,
+    "Cross-Origin-Resource-Policy": "cross-origin"
+  };
+}
+
 export function getCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
   const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string"
@@ -613,13 +627,7 @@ export default {
         if (!contentType) return new Response("Unsupported or invalid image content", { status: 415, headers: securityHeaders });
 
         return new Response(imageBytes, {
-          headers: {
-            "Content-Type": contentType,
-            "Content-Length": String(imageBytes.byteLength),
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "Access-Control-Allow-Origin": "*",
-            ...securityHeaders
-          }
+          headers: getPublicImageHeaders(contentType, imageBytes.byteLength)
         });
       }
 
