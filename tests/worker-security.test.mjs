@@ -349,3 +349,17 @@ test("public image responses permit cross-origin embedding without relaxing API 
   const apiRequest = new Request("https://api.example.test/api/orders");
   assert.equal(getCorsHeaders(apiRequest, {})["Access-Control-Allow-Origin"], undefined);
 });
+
+
+test("preserves explicit origins when a wildcard is also configured", () => {
+  const trusted = new Request("https://api.example.test/api/orders", {
+    headers: { Origin: "https://shop.example.test" }
+  });
+  const attacker = new Request("https://api.example.test/api/orders", {
+    headers: { Origin: "https://attacker.example" }
+  });
+  const env = { ALLOWED_ORIGINS: "*,https://shop.example.test" };
+
+  assert.equal(getCorsHeaders(trusted, env)["Access-Control-Allow-Origin"], "https://shop.example.test");
+  assert.equal(getCorsHeaders(attacker, env)["Access-Control-Allow-Origin"], undefined);
+});
