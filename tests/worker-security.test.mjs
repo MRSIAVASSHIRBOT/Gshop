@@ -388,3 +388,24 @@ test("public image responses permit cross-origin embedding without relaxing API 
   const apiRequest = new Request("https://api.example.test/api/orders");
   assert.equal(getCorsHeaders(apiRequest, {})["Access-Control-Allow-Origin"], undefined);
 });
+
+
+test("oversized request remains a 413 when stream cancellation fails", async () => {
+  const request = new Request("https://shop.example.test/", {
+    method: "POST",
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0, 1, 2, 3, 4]));
+      },
+      cancel() {
+        throw new Error("stream cancellation failed");
+      }
+    }),
+    duplex: "half"
+  });
+
+  await assert.rejects(
+    readBoundedRequestBytes(request, 4),
+    error => error.status === 413
+  );
+});
