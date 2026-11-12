@@ -822,7 +822,8 @@ export default {
         if (payment.status !== "pending") return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
 
         if (result !== "SUCCESS") {
-          await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(payment.track_id).run();
+          // A negative callback is not proof that the provider rejected this payment.
+          // Keep the order retryable until the provider confirms a terminal state.
           return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
         }
 
