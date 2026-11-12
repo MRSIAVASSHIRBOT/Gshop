@@ -1125,7 +1125,7 @@ export default {
           return jsonResponse({ ok: true }, 200, env, request);
         }
 
-                if (path === "/api/admin/stock" && method === "PATCH") {
+        if (path === "/api/admin/stock" && method === "PATCH") {
           const delta = Number(body.delta);
           const productId = Number(body.productId);
           const color = typeof body.color === "string" ? sanitize(body.color, 40) : "";
