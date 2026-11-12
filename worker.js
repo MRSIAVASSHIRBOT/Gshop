@@ -1126,8 +1126,8 @@ export default {
         }
 
         if (path === "/api/admin/stock" && method === "PATCH") {
-          const delta = Number(body.delta);
-          const productId = Number(body.productId);
+          const delta = body.delta;
+          const productId = body.productId;
           const color = typeof body.color === "string" ? sanitize(body.color, 40) : "";
           const size = typeof body.size === "string" ? sanitize(body.size, 20) : "";
           if (!Number.isSafeInteger(delta) || delta === 0 || Math.abs(delta) > 10000 ||

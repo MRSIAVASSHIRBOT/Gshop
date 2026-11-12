@@ -442,3 +442,25 @@ test("admin stock increment updates the matching variant", async () => {
   assert.equal(response.status, 200);
   assert.equal(DB.stock, 6);
 });
+
+test("admin stock adjustments reject coerced boolean and string numbers", async () => {
+  const token = "h".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token));
+  const invalidPayloads = [
+    { delta: true, productId: 7 },
+    { delta: "1", productId: 7 },
+    { delta: 1, productId: true },
+    { delta: 1, productId: "7" }
+  ];
+
+  for (const payload of invalidPayloads) {
+    const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      body: JSON.stringify({ ...payload, color: "مشکی", size: "L" })
+    }), { DB }, testContext);
+    assert.equal(response.status, 400);
+  }
+
+  assert.equal(DB.statements.some(item => item.sql.startsWith("UPDATE variants SET stock")), false);
+});
