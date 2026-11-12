@@ -776,8 +776,7 @@ export default {
         if (!trackId) return Response.redirect(`${siteUrl}/?payment=invalid`, 302);
         const payment = await env.DB.prepare("SELECT * FROM payments WHERE track_id = ?").bind(trackId).first();
         if (!payment) return Response.redirect(`${siteUrl}/?payment=invalid`, 302);
-          // A negative callback is not proof that the provider rejected this payment.
-          // Keep the order retryable until the provider confirms a terminal state.
+          if (success !== "1") { await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(trackId).run(); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
         const verifyReq = await fetch(URL_ZIBAL_VERIFY, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ merchant: env.ZIBAL_MERCHANT, trackId: parseInt(trackId) }) });
         const verifyRes = await verifyReq.json();
         if (verifyRes.result !== 100 || Number(verifyRes.amount) !== Math.round(payment.amount * 10)) { await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(trackId).run(); return Response.redirect(`${siteUrl}/?payment=failed&order=${payment.order_no}`, 302); }
@@ -823,7 +822,8 @@ export default {
         if (payment.status !== "pending") return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
 
         if (result !== "SUCCESS") {
-          await env.DB.prepare("UPDATE payments SET status='failed' WHERE track_id = ? AND status='pending'").bind(payment.track_id).run();
+          // A negative callback is not proof that the provider rejected this payment.
+          // Keep the order retryable until the provider confirms a terminal state.
           return Response.redirect(siteUrl + "/?payment=failed&order=" + encodeURIComponent(providerId), 302);
         }
 
