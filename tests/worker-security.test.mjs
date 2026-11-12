@@ -349,3 +349,96 @@ test("public image responses permit cross-origin embedding without relaxing API 
   const apiRequest = new Request("https://api.example.test/api/orders");
   assert.equal(getCorsHeaders(apiRequest, {})["Access-Control-Allow-Origin"], undefined);
 });
+
+
+function makeStockAdjustmentDatabase(tokenHash, { stock = 5, variantExists = true } = {}) {
+  let currentStock = stock;
+  const statements = [];
+  return {
+    statements,
+    get stock() { return currentStock; },
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...args) { values = args; return this; },
+        async first() {
+          statements.push({ sql, values, operation: "first" });
+          if (sql.includes("SELECT * FROM sessions")) {
+            return { token: tokenHash, expires_at: Date.now() + 60_000 };
+          }
+          if (sql.startsWith("SELECT stock FROM variants")) {
+            return variantExists ? { stock: currentStock } : null;
+          }
+          return null;
+        },
+        async run() {
+          statements.push({ sql, values, operation: "run" });
+          if (sql.startsWith("UPDATE variants SET stock = stock + ?")) {
+            const [delta, productId, color, size, minimumStock] = values;
+            if (!variantExists || (minimumStock !== undefined && currentStock < minimumStock)) {
+              return { meta: { changes: 0 } };
+            }
+            currentStock += delta;
+            return { meta: { changes: 1 } };
+          }
+          return { meta: { changes: 1 } };
+        }
+      };
+    }
+  };
+}
+
+test("admin stock adjustments reject fractional, zero, and out-of-range deltas", async () => {
+  const token = "d".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token));
+  for (const delta of [1.5, 0, 10001]) {
+    const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      body: JSON.stringify({ delta, productId: 7, color: "مشکی", size: "L" })
+    }), { DB }, testContext);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(DB.statements.some(item => item.sql.startsWith("UPDATE variants SET stock")), false);
+});
+
+test("admin stock decrement is conditional and cannot silently clamp below zero", async () => {
+  const token = "e".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { stock: 2 });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: -3, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 409);
+  assert.equal(DB.stock, 2);
+  const update = DB.statements.find(item => item.sql.startsWith("UPDATE variants SET stock"));
+  assert.match(update.sql, /AND stock >= \?$/);
+  assert.deepEqual(update.values, [-3, 7, "مشکی", "L", 3]);
+});
+
+test("admin stock adjustment reports missing variants instead of returning false success", async () => {
+  const token = "f".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { variantExists: false });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: 2, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 404);
+});
+
+test("admin stock increment updates the matching variant", async () => {
+  const token = "g".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { stock: 2 });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: 4, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 200);
+  assert.equal(DB.stock, 6);
+});
