@@ -350,6 +350,50 @@ test("public image responses permit cross-origin embedding without relaxing API 
   assert.equal(getCorsHeaders(apiRequest, {})["Access-Control-Allow-Origin"], undefined);
 });
 
+ 
+test("unverified negative DigiPay callbacks cannot mark pending payments failed", async () => {
+  const statements = [];
+  const DB = {
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...args) { values = args; return this; },
+        async first() {
+          statements.push({ sql, values, operation: "first" });
+          if (sql.includes("SELECT * FROM payments WHERE order_no = ?")) {
+            return { order_no: "GS-ORDER-123", track_id: "provider-track-123", amount: 250000, status: "pending" };
+          }
+          return null;
+        },
+        async run() {
+          statements.push({ sql, values, operation: "run" });
+          return { meta: { changes: 1 } };
+        }
+      };
+    }
+  };
+
+  const response = await worker.fetch(new Request("https://shop.example.test/api/payment/digipay/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      providerId: "GS-ORDER-123",
+      trackingCode: "untrusted-track-value",
+      result: "FAILED",
+      amount: "2500000",
+      type: "11"
+    })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("Location"), /payment=failed/);
+  assert.equal(
+    statements.some(item => item.operation === "run" && item.sql.includes("UPDATE payments SET status=")),
+    false,
+    "an unauthenticated negative callback must not change payment state"
+  );
+});
+
 
 function makeStockAdjustmentDatabase(tokenHash, { stock = 5, variantExists = true } = {}) {
   let currentStock = stock;
