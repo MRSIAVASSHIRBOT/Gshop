@@ -570,3 +570,17 @@ test("admin stock adjustments reject coerced boolean and string numbers", async 
 
   assert.equal(DB.statements.some(item => item.sql.startsWith("UPDATE variants SET stock")), false);
 });
+
+
+test("preserves explicit origins when a wildcard is also configured", () => {
+  const trusted = new Request("https://api.example.test/api/orders", {
+    headers: { Origin: "https://shop.example.test" }
+  });
+  const attacker = new Request("https://api.example.test/api/orders", {
+    headers: { Origin: "https://attacker.example" }
+  });
+  const env = { ALLOWED_ORIGINS: "*,https://shop.example.test" };
+
+  assert.equal(getCorsHeaders(trusted, env)["Access-Control-Allow-Origin"], "https://shop.example.test");
+  assert.equal(getCorsHeaders(attacker, env)["Access-Control-Allow-Origin"], undefined);
+});
