@@ -1151,10 +1151,29 @@ export default {
         }
 
         if (path === "/api/admin/stock" && method === "PATCH") {
-          const delta = Number(body.delta);
-          if (!Number.isFinite(delta) || Math.abs(delta) > 10000) return jsonResponse({ error: "نامعتبر" }, 400, env, request);
-          await env.DB.prepare("UPDATE variants SET stock = MAX(0, stock + ?) WHERE product_id = ? AND color = ? AND size = ?").bind(delta, body.productId, body.color, body.size).run();
-          return jsonResponse({ ok: true }, 200, env, request);
+          const delta = body.delta;
+          const productId = body.productId;
+          const color = typeof body.color === "string" ? sanitize(body.color, 40) : "";
+          const size = typeof body.size === "string" ? sanitize(body.size, 20) : "";
+          if (!Number.isSafeInteger(delta) || delta === 0 || Math.abs(delta) > 10000 ||
+              !Number.isSafeInteger(productId) || productId <= 0 || !color || !size) {
+            return jsonResponse({ error: "نامعتبر" }, 400, env, request);
+          }
+
+          const stockSql = delta < 0
+            ? "UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ? AND stock >= ?"
+            : "UPDATE variants SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?";
+          const stockUpdate = delta < 0
+            ? await env.DB.prepare(stockSql).bind(delta, productId, color, size, -delta).run()
+            : await env.DB.prepare(stockSql).bind(delta, productId, color, size).run();
+
+          if (stockUpdate.meta?.changes > 0) return jsonResponse({ ok: true }, 200, env, request);
+
+          const variant = await env.DB.prepare(
+            "SELECT stock FROM variants WHERE product_id = ? AND color = ? AND size = ?"
+          ).bind(productId, color, size).first();
+          if (!variant) return jsonResponse({ error: "تنوع محصول یافت نشد" }, 404, env, request);
+          return jsonResponse({ error: "موجودی کافی نیست" }, 409, env, request);
         }
 
         if (path === "/api/admin/low-stock" && method === "GET") {
