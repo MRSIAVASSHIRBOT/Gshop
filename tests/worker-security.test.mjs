@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, getPublicImageHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, getPublicImageHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestBytes, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -392,6 +392,183 @@ test("unverified negative DigiPay callbacks cannot mark pending payments failed"
     false,
     "an unauthenticated negative callback must not change payment state"
   );
+});
+
+
+test("binary request bodies are bounded even when Content-Length is absent", async () => {
+  const valid = new Request("https://shop.example.test/", { method: "POST", body: new Uint8Array([0, 1, 2, 255]) });
+  assert.equal(valid.headers.has("Content-Length"), false);
+  assert.deepEqual(Array.from(await readBoundedRequestBytes(valid, 4)), [0, 1, 2, 255]);
+
+  const oversized = new Request("https://shop.example.test/", { method: "POST", body: new Uint8Array([0, 1, 2, 3, 4]) });
+  assert.equal(oversized.headers.has("Content-Length"), false);
+  await assert.rejects(readBoundedRequestBytes(oversized, 4), error => error.status === 413);
+});
+
+test("admin multipart uploads enforce the streaming body limit without Content-Length", async () => {
+  const token = "b".repeat(64);
+  const DB = makeSessionDatabase(await hashSessionToken(token));
+  const boundary = "----gshop-bounded-upload";
+  const encoder = new TextEncoder();
+  const prefix = encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="large.png"\r\nContent-Type: image/png\r\n\r\n`);
+  const fileBytes = new Uint8Array(5 * 1024 * 1024 + 64 * 1024 + 1);
+  const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(prefix.length + fileBytes.length + suffix.length);
+  body.set(prefix, 0);
+  body.set(fileBytes, prefix.length);
+  body.set(suffix, prefix.length + fileBytes.length);
+
+  const request = new Request("https://shop.example.test/api/admin/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      "X-Admin-Token": token
+    },
+    body
+  });
+  assert.equal(request.headers.has("Content-Length"), false);
+
+  const response = await worker.fetch(request, { DB }, testContext);
+  assert.equal(response.status, 413);
+  const payload = await response.json();
+  assert.match(payload.error, /بیش از حد مجاز/);
+});
+
+
+
+test("oversized request remains a 413 when stream cancellation fails", async () => {
+  const request = new Request("https://shop.example.test/", {
+    method: "POST",
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0, 1, 2, 3, 4]));
+      },
+      cancel() {
+        throw new Error("stream cancellation failed");
+      }
+    }),
+    duplex: "half"
+  });
+
+  await assert.rejects(
+    readBoundedRequestBytes(request, 4),
+    error => error.status === 413
+  );
+});
+
+
+function makeStockAdjustmentDatabase(tokenHash, { stock = 5, variantExists = true } = {}) {
+  let currentStock = stock;
+  const statements = [];
+  return {
+    statements,
+    get stock() { return currentStock; },
+    prepare(sql) {
+      let values = [];
+      return {
+        bind(...args) { values = args; return this; },
+        async first() {
+          statements.push({ sql, values, operation: "first" });
+          if (sql.includes("SELECT * FROM sessions")) {
+            return { token: tokenHash, expires_at: Date.now() + 60_000 };
+          }
+          if (sql.startsWith("SELECT stock FROM variants")) {
+            return variantExists ? { stock: currentStock } : null;
+          }
+          return null;
+        },
+        async run() {
+          statements.push({ sql, values, operation: "run" });
+          if (sql.startsWith("UPDATE variants SET stock = stock + ?")) {
+            const [delta, productId, color, size, minimumStock] = values;
+            if (!variantExists || (minimumStock !== undefined && currentStock < minimumStock)) {
+              return { meta: { changes: 0 } };
+            }
+            currentStock += delta;
+            return { meta: { changes: 1 } };
+          }
+          return { meta: { changes: 1 } };
+        }
+      };
+    }
+  };
+}
+
+test("admin stock adjustments reject fractional, zero, and out-of-range deltas", async () => {
+  const token = "d".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token));
+  for (const delta of [1.5, 0, 10001]) {
+    const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      body: JSON.stringify({ delta, productId: 7, color: "مشکی", size: "L" })
+    }), { DB }, testContext);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(DB.statements.some(item => item.sql.startsWith("UPDATE variants SET stock")), false);
+});
+
+test("admin stock decrement is conditional and cannot silently clamp below zero", async () => {
+  const token = "e".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { stock: 2 });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: -3, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 409);
+  assert.equal(DB.stock, 2);
+  const update = DB.statements.find(item => item.sql.startsWith("UPDATE variants SET stock"));
+  assert.match(update.sql, /AND stock >= \?$/);
+  assert.deepEqual(update.values, [-3, 7, "مشکی", "L", 3]);
+});
+
+test("admin stock adjustment reports missing variants instead of returning false success", async () => {
+  const token = "f".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { variantExists: false });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: 2, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 404);
+});
+
+test("admin stock increment updates the matching variant", async () => {
+  const token = "g".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token), { stock: 2 });
+  const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+    body: JSON.stringify({ delta: 4, productId: 7, color: "مشکی", size: "L" })
+  }), { DB }, testContext);
+
+  assert.equal(response.status, 200);
+  assert.equal(DB.stock, 6);
+});
+
+test("admin stock adjustments reject coerced boolean and string numbers", async () => {
+  const token = "h".repeat(64);
+  const DB = makeStockAdjustmentDatabase(await hashSessionToken(token));
+  const invalidPayloads = [
+    { delta: true, productId: 7 },
+    { delta: "1", productId: 7 },
+    { delta: 1, productId: true },
+    { delta: 1, productId: "7" }
+  ];
+
+  for (const payload of invalidPayloads) {
+    const response = await worker.fetch(new Request("https://shop.example.test/api/admin/stock", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      body: JSON.stringify({ ...payload, color: "مشکی", size: "L" })
+    }), { DB }, testContext);
+    assert.equal(response.status, 400);
+  }
+
+  assert.equal(DB.statements.some(item => item.sql.startsWith("UPDATE variants SET stock")), false);
 });
 
 
