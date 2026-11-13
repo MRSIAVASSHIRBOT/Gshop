@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, getPublicImageHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
+import worker, { aggregateOrderItems, generateOrderNumber, getCorsHeaders, getPublicImageHeaders, hashSessionToken, canTransitionOrderStatus, parseDigipayAccessToken, parseDigipayCallback, readBoundedRequestBytes, readBoundedRequestText, readBoundedText, readDigipayJsonResponse } from "../worker.js";
 
 test("merges duplicate product variants before stock validation", () => {
   const result = aggregateOrderItems([
@@ -391,5 +391,67 @@ test("unverified negative DigiPay callbacks cannot mark pending payments failed"
     statements.some(item => item.operation === "run" && item.sql.includes("UPDATE payments SET status=")),
     false,
     "an unauthenticated negative callback must not change payment state"
+  );
+});
+
+
+test("binary request bodies are bounded even when Content-Length is absent", async () => {
+  const valid = new Request("https://shop.example.test/", { method: "POST", body: new Uint8Array([0, 1, 2, 255]) });
+  assert.equal(valid.headers.has("Content-Length"), false);
+  assert.deepEqual(Array.from(await readBoundedRequestBytes(valid, 4)), [0, 1, 2, 255]);
+
+  const oversized = new Request("https://shop.example.test/", { method: "POST", body: new Uint8Array([0, 1, 2, 3, 4]) });
+  assert.equal(oversized.headers.has("Content-Length"), false);
+  await assert.rejects(readBoundedRequestBytes(oversized, 4), error => error.status === 413);
+});
+
+test("admin multipart uploads enforce the streaming body limit without Content-Length", async () => {
+  const token = "b".repeat(64);
+  const DB = makeSessionDatabase(await hashSessionToken(token));
+  const boundary = "----gshop-bounded-upload";
+  const encoder = new TextEncoder();
+  const prefix = encoder.encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="large.png"\r\nContent-Type: image/png\r\n\r\n`);
+  const fileBytes = new Uint8Array(5 * 1024 * 1024 + 64 * 1024 + 1);
+  const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(prefix.length + fileBytes.length + suffix.length);
+  body.set(prefix, 0);
+  body.set(fileBytes, prefix.length);
+  body.set(suffix, prefix.length + fileBytes.length);
+
+  const request = new Request("https://shop.example.test/api/admin/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      "X-Admin-Token": token
+    },
+    body
+  });
+  assert.equal(request.headers.has("Content-Length"), false);
+
+  const response = await worker.fetch(request, { DB }, testContext);
+  assert.equal(response.status, 413);
+  const payload = await response.json();
+  assert.match(payload.error, /بیش از حد مجاز/);
+});
+
+
+
+test("oversized request remains a 413 when stream cancellation fails", async () => {
+  const request = new Request("https://shop.example.test/", {
+    method: "POST",
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0, 1, 2, 3, 4]));
+      },
+      cancel() {
+        throw new Error("stream cancellation failed");
+      }
+    }),
+    duplex: "half"
+  });
+
+  await assert.rejects(
+    readBoundedRequestBytes(request, 4),
+    error => error.status === 413
   );
 });
